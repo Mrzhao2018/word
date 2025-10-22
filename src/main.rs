@@ -47,6 +47,7 @@ fn main() {
             update_selection_indicator,
             mouse_control_system,
             update_dwarf_panel,
+            dwarf_name_hover_system,  // 鼠标悬停显示名字
             // 动画系统
             water_animation_system,
             tree_sway_system,

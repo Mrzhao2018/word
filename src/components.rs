@@ -41,6 +41,7 @@ pub struct Velocity {
 #[derive(Component)]
 pub struct WorkState {
     pub current_task: Option<Task>,
+    pub work_progress: f32, // 工作进度 0.0-1.0
 }
 
 /// UI标记组件
@@ -63,6 +64,10 @@ pub struct WorkIndicator;
 /// 选择指示器标记
 #[derive(Component)]
 pub struct SelectionIndicator;
+
+/// 鼠标悬停名字标签
+#[derive(Component)]
+pub struct DwarfNameTag;
 
 /// ASCII字符显示组件
 #[derive(Component)]

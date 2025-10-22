@@ -66,13 +66,15 @@ pub fn dwarf_work_system(
                 let dy = target.y - pos.y;
                 
                 if dx.abs() > 0 || dy.abs() > 0 {
+                    // 移动中，停止工作
                     velocity.x = dx.signum() as f32 * 0.5;
                     velocity.y = dy.signum() as f32 * 0.5;
+                    work_state.work_progress = 0.0; // 移动时重置进度
                 } else {
-                    // 到达目标,完成任务
+                    // 到达目标位置，停止移动，开始工作
                     velocity.x = 0.0;
                     velocity.y = 0.0;
-                    work_state.current_task = Some(Task::Idle);
+                    // 工作进度在 resource_gathering_system 中累积
                 }
             }
             _ => {}
@@ -80,11 +82,11 @@ pub fn dwarf_work_system(
     }
 }
 
-/// 资源采集系统
+/// 资源采集系统 - 改进版，基于工作进度
 pub fn resource_gathering_system(
     time: Res<Time>,
-    _commands: Commands,
-    query: Query<(&WorkState, &GridPosition), With<Dwarf>>,
+    mut query: Query<(&mut WorkState, &GridPosition), With<Dwarf>>,
+    terrain_query: Query<(&GridPosition, &Terrain)>,
     mut inventory: ResMut<GlobalInventory>,
 ) {
     // 如果时间暂停,不采集资源
@@ -92,17 +94,89 @@ pub fn resource_gathering_system(
         return;
     }
     
-    for (work_state, _pos) in query.iter() {
-        if let Some(Task::Gathering(_)) = work_state.current_task {
-            // 简化:直接增加资源
-            if rand::thread_rng().gen_ratio(1, 60) {
-                inventory.food += 1;
-            }
-        }
+    for (mut work_state, pos) in query.iter_mut() {
+        // 先克隆当前任务以避免借用冲突
+        let current_task = work_state.current_task.clone();
         
-        if let Some(Task::Mining(_)) = work_state.current_task {
-            if rand::thread_rng().gen_ratio(1, 120) {
-                inventory.stone += 1;
+        match &current_task {
+            Some(Task::Gathering(target)) => {
+                // 到达目标位置才能采集
+                if pos.x == target.x && pos.y == target.y {
+                    // 累积工作进度
+                    work_state.work_progress += time.delta_secs() * 0.5; // 2秒完成一次采集
+                    
+                    if work_state.work_progress >= 1.0 {
+                        // 完成采集，根据地形类型获得资源
+                        let mut found_terrain = TerrainType::Grass;
+                        for (terrain_pos, terrain) in terrain_query.iter() {
+                            if terrain_pos.x == target.x && terrain_pos.y == target.y {
+                                found_terrain = terrain.terrain_type;
+                                break;
+                            }
+                        }
+                        
+                        match found_terrain {
+                            TerrainType::Tree => {
+                                inventory.wood += 1;
+                                inventory.food += 1; // 树木可能有果实
+                            }
+                            TerrainType::Grass => {
+                                inventory.food += 2; // 草地采集食物
+                            }
+                            TerrainType::Water => {
+                                inventory.food += 1; // 水边钓鱼
+                            }
+                            _ => {
+                                inventory.food += 1; // 默认食物
+                            }
+                        }
+                        
+                        // 重置进度，返回空闲
+                        work_state.work_progress = 0.0;
+                        work_state.current_task = Some(Task::Idle);
+                    }
+                }
+            }
+            
+            Some(Task::Mining(target)) => {
+                // 到达目标位置才能挖矿
+                if pos.x == target.x && pos.y == target.y {
+                    // 累积工作进度
+                    work_state.work_progress += time.delta_secs() * 0.3; // 3.3秒完成一次挖矿
+                    
+                    if work_state.work_progress >= 1.0 {
+                        // 完成挖矿，根据地形类型获得资源
+                        let mut found_terrain = TerrainType::Stone;
+                        for (terrain_pos, terrain) in terrain_query.iter() {
+                            if terrain_pos.x == target.x && terrain_pos.y == target.y {
+                                found_terrain = terrain.terrain_type;
+                                break;
+                            }
+                        }
+                        
+                        match found_terrain {
+                            TerrainType::Stone => {
+                                inventory.stone += 3; // 石头地形产出更多石头
+                            }
+                            TerrainType::Mountain => {
+                                inventory.stone += 2;
+                                inventory.metal += 1; // 山脉可能有金属
+                            }
+                            _ => {
+                                inventory.stone += 1; // 其他地形也能挖到一些石头
+                            }
+                        }
+                        
+                        // 重置进度，返回空闲
+                        work_state.work_progress = 0.0;
+                        work_state.current_task = Some(Task::Idle);
+                    }
+                }
+            }
+            
+            _ => {
+                // 其他任务重置进度
+                work_state.work_progress = 0.0;
             }
         }
     }
@@ -344,11 +418,19 @@ pub fn update_work_indicators(
     for (work_state, children) in dwarves.iter() {
         for child in children.iter() {
             if let Ok(mut sprite) = indicators.get_mut(child) {
-                // 根据任务类型改变颜色
+                // 根据任务类型和进度改变颜色和透明度
                 sprite.color = match &work_state.current_task {
                     Some(Task::Idle) => Color::srgba(0.5, 0.5, 0.5, 0.6), // 灰色 = 空闲
-                    Some(Task::Gathering(_)) => Color::srgba(0.0, 1.0, 0.0, 0.8), // 绿色 = 采集
-                    Some(Task::Mining(_)) => Color::srgba(1.0, 0.5, 0.0, 0.8), // 橙色 = 挖矿
+                    Some(Task::Gathering(_)) => {
+                        // 绿色，透明度随进度变化
+                        let alpha = 0.5 + work_state.work_progress * 0.5;
+                        Color::srgba(0.0, 1.0, 0.0, alpha)
+                    }
+                    Some(Task::Mining(_)) => {
+                        // 橙色，透明度随进度变化
+                        let alpha = 0.5 + work_state.work_progress * 0.5;
+                        Color::srgba(1.0, 0.5, 0.0, alpha)
+                    }
                     _ => Color::srgba(1.0, 1.0, 1.0, 0.6),
                 };
             }
@@ -525,8 +607,14 @@ pub fn update_dwarf_panel(
     for mut text in panel_query.iter_mut() {
         let task_text = match &work_state.current_task {
             Some(Task::Idle) => "空闲".to_string(),
-            Some(Task::Gathering(target)) => format!("采集 -> ({}, {})", target.x, target.y),
-            Some(Task::Mining(target)) => format!("挖矿 -> ({}, {})", target.x, target.y),
+            Some(Task::Gathering(target)) => {
+                let progress = (work_state.work_progress * 100.0) as i32;
+                format!("采集 -> ({}, {}) [{}%]", target.x, target.y, progress)
+            }
+            Some(Task::Mining(target)) => {
+                let progress = (work_state.work_progress * 100.0) as i32;
+                format!("挖矿 -> ({}, {}) [{}%]", target.x, target.y, progress)
+            }
             Some(Task::Building(target, _)) => format!("建造 -> ({}, {})", target.x, target.y),
             None => "无任务".to_string(),
         };
@@ -643,60 +731,82 @@ fn smooth_step(t: f32) -> f32 {
     t * t * (3.0 - 2.0 * t) // Hermite插值
 }
 
-/// 生成粒子效果
+/// 生成粒子效果 - 只在工作进行中生成
 pub fn spawn_particle_system(
     mut commands: Commands,
-    dwarves: Query<(&Transform, &WorkState), (With<Dwarf>, Changed<WorkState>)>,
+    time: Res<Time>,
+    dwarves: Query<(&Transform, &WorkState, &GridPosition), With<Dwarf>>,
 ) {
-    for (transform, work_state) in dwarves.iter() {
+    // 如果时间暂停,不生成粒子
+    if time.delta_secs() <= 0.0001 {
+        return;
+    }
+    
+    for (transform, work_state, pos) in dwarves.iter() {
+        // 只在矮人到达目标位置并且正在工作时生成粒子
+        let should_spawn = match &work_state.current_task {
+            Some(Task::Mining(target)) => {
+                pos.x == target.x && pos.y == target.y && work_state.work_progress > 0.0
+            }
+            Some(Task::Gathering(target)) => {
+                pos.x == target.x && pos.y == target.y && work_state.work_progress > 0.0
+            }
+            _ => false,
+        };
+        
+        if !should_spawn {
+            continue;
+        }
+        
+        // 降低粒子生成频率
+        if rand::thread_rng().gen_ratio(1, 10) {
+            continue;
+        }
+        
         match &work_state.current_task {
             Some(Task::Mining(_)) => {
                 // 挖矿粉尘
-                for _ in 0..3 {
-                    let angle = rand::random::<f32>() * std::f32::consts::PI * 2.0;
-                    let speed = rand::random::<f32>() * 20.0 + 10.0;
-                    
-                    commands.spawn((
-                        Sprite {
-                            color: Color::srgba(0.6, 0.5, 0.4, 0.8),
-                            custom_size: Some(Vec2::new(3.0, 3.0)),
-                            ..default()
-                        },
-                        Transform::from_xyz(
-                            transform.translation.x,
-                            transform.translation.y,
-                            3.0,
-                        ),
-                        Particle {
-                            lifetime: 1.0,
-                            velocity: Vec2::new(angle.cos() * speed, angle.sin() * speed),
-                        },
-                    ));
-                }
+                let angle = rand::random::<f32>() * std::f32::consts::PI * 2.0;
+                let speed = rand::random::<f32>() * 20.0 + 10.0;
+                
+                commands.spawn((
+                    Sprite {
+                        color: Color::srgba(0.6, 0.5, 0.4, 0.8),
+                        custom_size: Some(Vec2::new(3.0, 3.0)),
+                        ..default()
+                    },
+                    Transform::from_xyz(
+                        transform.translation.x,
+                        transform.translation.y,
+                        3.0,
+                    ),
+                    Particle {
+                        lifetime: 1.0,
+                        velocity: Vec2::new(angle.cos() * speed, angle.sin() * speed),
+                    },
+                ));
             }
             Some(Task::Gathering(_)) => {
                 // 采集特效
-                for _ in 0..2 {
-                    let angle = rand::random::<f32>() * std::f32::consts::PI * 2.0;
-                    let speed = rand::random::<f32>() * 15.0 + 5.0;
-                    
-                    commands.spawn((
-                        Sprite {
-                            color: Color::srgba(0.2, 0.8, 0.2, 0.9),
-                            custom_size: Some(Vec2::new(4.0, 4.0)),
-                            ..default()
-                        },
-                        Transform::from_xyz(
-                            transform.translation.x,
-                            transform.translation.y + 10.0,
-                            3.0,
-                        ),
-                        Particle {
-                            lifetime: 0.8,
-                            velocity: Vec2::new(angle.cos() * speed, angle.sin() * speed + 20.0),
-                        },
-                    ));
-                }
+                let angle = rand::random::<f32>() * std::f32::consts::PI * 2.0;
+                let speed = rand::random::<f32>() * 15.0 + 5.0;
+                
+                commands.spawn((
+                    Sprite {
+                        color: Color::srgba(0.2, 0.8, 0.2, 0.9),
+                        custom_size: Some(Vec2::new(4.0, 4.0)),
+                        ..default()
+                    },
+                    Transform::from_xyz(
+                        transform.translation.x,
+                        transform.translation.y + 10.0,
+                        3.0,
+                    ),
+                    Particle {
+                        lifetime: 0.8,
+                        velocity: Vec2::new(angle.cos() * speed, angle.sin() * speed + 20.0),
+                    },
+                ));
             }
             _ => {}
         }
@@ -726,5 +836,66 @@ pub fn particle_system(
         
         // 淡出
         sprite.color = sprite.color.with_alpha(particle.lifetime);
+    }
+}
+
+/// 鼠标悬停显示矮人名字系统
+pub fn dwarf_name_hover_system(
+    mut commands: Commands,
+    windows: Query<&Window>,
+    camera_query: Query<(&Camera, &GlobalTransform)>,
+    dwarves: Query<(Entity, &Transform, &Dwarf), With<Dwarf>>,
+    existing_tags: Query<Entity, With<DwarfNameTag>>,
+    asset_server: Res<AssetServer>,
+) {
+    // 清除所有现有名字标签
+    for entity in existing_tags.iter() {
+        commands.entity(entity).despawn();
+    }
+    
+    let Ok(window) = windows.single() else {
+        return;
+    };
+    
+    let Some(cursor_position) = window.cursor_position() else {
+        return;
+    };
+    
+    let Ok((camera, camera_transform)) = camera_query.single() else {
+        return;
+    };
+    
+    // 将屏幕坐标转换为世界坐标
+    let Ok(world_position) = camera.viewport_to_world_2d(camera_transform, cursor_position) else {
+        return;
+    };
+    
+    // 加载字体
+    let font = asset_server.load("fonts/SourceHanSansCN-Regular.otf");
+    
+    // 检查鼠标附近的矮人（半径约50像素）
+    const HOVER_RADIUS: f32 = 50.0;
+    
+    for (_entity, transform, dwarf) in dwarves.iter() {
+        let distance = world_position.distance(transform.translation.truncate());
+        
+        if distance < HOVER_RADIUS {
+            // 在矮人上方显示名字
+            commands.spawn((
+                Text2d::new(&dwarf.name),
+                TextFont {
+                    font: font.clone(),
+                    font_size: 20.0,
+                    ..default()
+                },
+                TextColor(Color::srgb(1.0, 1.0, 0.3)),
+                Transform::from_xyz(
+                    transform.translation.x,
+                    transform.translation.y + 25.0,
+                    100.0, // 确保在最上层
+                ),
+                DwarfNameTag,
+            ));
+        }
     }
 }

@@ -171,6 +171,7 @@ pub fn spawn_dwarves(mut commands: Commands, asset_server: Res<AssetServer>) {
             Velocity { x: 0.0, y: 0.0 },
             WorkState {
                 current_task: Some(Task::Idle),
+                work_progress: 0.0,
             },
         ))
         .with_children(|parent| {
