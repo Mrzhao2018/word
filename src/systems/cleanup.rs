@@ -14,6 +14,7 @@ pub fn cleanup_game_on_menu_return(
     particle_query: Query<Entity, With<Particle>>,
     daylight_query: Query<Entity, With<DaylightOverlay>>,
     name_tag_query: Query<Entity, With<DwarfNameTag>>,
+    terrain_info_query: Query<Entity, With<TerrainInfoLabel>>,  // 地形信息标签
     resource_display_query: Query<Entity, With<ResourceDisplay>>,
     title_display_query: Query<Entity, With<TitleDisplay>>,
     help_display_query: Query<Entity, With<HelpDisplay>>,
@@ -46,6 +47,7 @@ pub fn cleanup_game_on_menu_return(
     despawn_entities_safe!(particle_query);
     despawn_entities_safe!(daylight_query);
     despawn_entities_safe!(name_tag_query);
+    despawn_entities_safe!(terrain_info_query);  // 地形信息标签
     despawn_entities_safe!(resource_display_query);
     despawn_entities_safe!(title_display_query);
     despawn_entities_safe!(help_display_query);

@@ -4,6 +4,7 @@ mod components;
 mod systems;
 mod resources;
 mod world;
+mod pathfinding;
 
 use systems::*;
 use resources::*;
@@ -28,6 +29,7 @@ fn main() {
         .init_resource::<SelectedDwarf>()
         .init_resource::<GlobalInventory>()
         .init_resource::<GameInitialized>()
+        .init_resource::<WorldSeed>()  // 世界生成种子
         // 启动系统（总是执行）
         .add_systems(Startup, setup_camera)
         // 进入主菜单时的系统
@@ -58,20 +60,25 @@ fn main() {
         // 游戏状态下的更新系统
         .add_systems(Update, (
             pause_game_system,  // ESC暂停检测
-            dwarf_movement_system,
-            dwarf_work_system,
+            dwarf_work_system,    // 先决策
+            dwarf_movement_system, // 后执行移动
             resource_gathering_system,
             building_system,
             time_system,
             time_control_system,
             ui_update_system,
             input_system,
+        ).run_if(in_state(GameState::Playing)))
+        .add_systems(Update, (
             update_work_indicators,
             mouse_selection_system,
             update_selection_indicator,
             mouse_control_system,
             update_dwarf_panel,
             dwarf_name_hover_system,
+            terrain_info_hover_system,  // 地形信息悬停
+        ).run_if(in_state(GameState::Playing)))
+        .add_systems(Update, (
             // 动画系统
             water_animation_system,
             tree_sway_system,

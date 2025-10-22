@@ -39,6 +39,9 @@ pub struct Velocity {
 pub struct WorkState {
     pub current_task: Option<Task>,
     pub work_progress: f32, // 工作进度 0.0-1.0
+    pub cached_path: Vec<(i32, i32)>, // 缓存的路径
+    pub path_index: usize,  // 当前路径点索引
+    pub path_recalc_timer: f32, // 路径重新计算计时器
 }
 
 /// UI标记组件
@@ -65,6 +68,10 @@ pub struct SelectionIndicator;
 /// 鼠标悬停名字标签
 #[derive(Component)]
 pub struct DwarfNameTag;
+
+/// 地形信息标签
+#[derive(Component)]
+pub struct TerrainInfoLabel;
 
 /// 主菜单UI标记
 #[derive(Component)]
@@ -170,7 +177,6 @@ impl TerrainType {
     }
     
     /// 获取地形的移动速度倍率
-    #[allow(dead_code)]  // 保留用于未来寻路系统
     pub fn movement_speed(&self) -> f32 {
         match self {
             TerrainType::Grass => 1.0,     // 草地正常速度
@@ -182,7 +188,6 @@ impl TerrainType {
     }
     
     /// 获取地形的描述
-    #[allow(dead_code)]  // 保留用于未来UI提示系统
     pub fn description(&self) -> &'static str {
         match self {
             TerrainType::Grass => "草地 - 适合采集食物",
@@ -198,7 +203,6 @@ impl TerrainType {
 #[derive(Component)]
 pub struct Terrain {
     pub terrain_type: TerrainType,
-    #[allow(dead_code)]  // 保留用于未来寻路系统
     pub walkable: bool,
     pub resource_richness: f32,  // 资源丰富度 0.5-1.5
 }

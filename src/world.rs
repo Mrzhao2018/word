@@ -87,13 +87,13 @@ impl TerrainGenerator {
 }
 
 /// 生成世界地形 - 改进版，使用噪声生成
-pub fn setup_world(mut commands: Commands, asset_server: Res<AssetServer>) {
+pub fn setup_world(mut commands: Commands, asset_server: Res<AssetServer>, mut world_seed: ResMut<crate::resources::WorldSeed>) {
     let mut rng = rand::thread_rng();
     let font = asset_server.load("fonts/sarasa-gothic-sc-regular.ttf");
     
-    // 创建地形生成器
-    let seed = rng.gen();
-    let generator = TerrainGenerator::new(seed);
+    // 创建地形生成器（使用资源中的种子）
+    world_seed.seed = rng.gen();
+    let generator = TerrainGenerator::new(world_seed.seed);
     
     for x in 0..WORLD_WIDTH {
         for y in 0..WORLD_HEIGHT {
@@ -141,8 +141,9 @@ pub fn setup_world(mut commands: Commands, asset_server: Res<AssetServer>) {
                 ),
             };
             
-            let pos_x = x as f32 * TILE_SIZE - (WORLD_WIDTH as f32 * TILE_SIZE / 2.0);
-            let pos_y = y as f32 * TILE_SIZE - (WORLD_HEIGHT as f32 * TILE_SIZE / 2.0);
+            // 修正坐标计算，让地块中心对齐网格点
+            let pos_x = x as f32 * TILE_SIZE - (WORLD_WIDTH as f32 * TILE_SIZE / 2.0) + (TILE_SIZE / 2.0);
+            let pos_y = y as f32 * TILE_SIZE - (WORLD_HEIGHT as f32 * TILE_SIZE / 2.0) + (TILE_SIZE / 2.0);
             
             // 计算资源丰富度（基于细节噪声）
             let detail_noise = generator.detail.get([x as f64 * 0.3, y as f64 * 0.3]);
@@ -208,14 +209,73 @@ pub fn setup_world(mut commands: Commands, asset_server: Res<AssetServer>) {
     }
 }
 
-/// 生成矮人
-pub fn spawn_dwarves(mut commands: Commands, asset_server: Res<AssetServer>) {
+/// 生成矮人 - 改进版，确保生成在可行走地形上
+pub fn spawn_dwarves(mut commands: Commands, asset_server: Res<AssetServer>, world_seed: Res<crate::resources::WorldSeed>) {
     let dwarf_names = vec!["乌里克", "索林", "巴林", "朵莉", "芬恩", "格洛因", "诺力"];
     let font = asset_server.load("fonts/sarasa-gothic-sc-regular.ttf");
     
-    for (i, name) in dwarf_names.iter().enumerate() {
-        let x_pos = (i as f32 * 50.0) - 150.0;
-        let y_pos = 0.0;
+    // 使用与世界生成相同的种子创建地形生成器
+    let generator = TerrainGenerator::new(world_seed.seed);
+    let mut rng = rand::thread_rng();
+    
+    // 寻找世界中心附近的可行走位置
+    let center_x = WORLD_WIDTH / 2;
+    let center_y = WORLD_HEIGHT / 2;
+    
+    // 为每个矮人单独寻找生成位置
+    for (_i, name) in dwarf_names.iter().enumerate() {
+        let mut grid_x = center_x;
+        let mut grid_y = center_y;
+        let mut found_safe_spot = false;
+        
+        // 尝试多次随机寻找安全位置
+        for _ in 0..100 {
+            // 在中心附近随机选择位置
+            let test_x = center_x + rng.gen_range(-15..15);
+            let test_y = center_y + rng.gen_range(-15..15);
+            
+            // 边界检查（留出2格边距）
+            if test_x < 2 || test_x >= WORLD_WIDTH - 2 || test_y < 2 || test_y >= WORLD_HEIGHT - 2 {
+                continue;
+            }
+            
+            // 检查该位置及周围是否全部可行走
+            let mut all_safe = true;
+            for dy in -1..=1 {
+                for dx in -1..=1 {
+                    let check_x = test_x + dx;
+                    let check_y = test_y + dy;
+                    
+                    let terrain = generator.get_terrain(check_x, check_y);
+                    let is_river = generator.is_river(check_x, check_y);
+                    
+                    if matches!(terrain, TerrainType::Water | TerrainType::Mountain) || is_river {
+                        all_safe = false;
+                        break;
+                    }
+                }
+                if !all_safe {
+                    break;
+                }
+            }
+            
+            if all_safe {
+                grid_x = test_x;
+                grid_y = test_y;
+                found_safe_spot = true;
+                break;
+            }
+        }
+        
+        // 如果没找到，使用中心位置作为后备
+        if !found_safe_spot {
+            grid_x = center_x;
+            grid_y = center_y;
+        }
+        
+        // 根据网格位置计算世界坐标（与地形对齐）
+        let x_pos = grid_x as f32 * TILE_SIZE - (WORLD_WIDTH as f32 * TILE_SIZE / 2.0) + (TILE_SIZE / 2.0);
+        let y_pos = grid_y as f32 * TILE_SIZE - (WORLD_HEIGHT as f32 * TILE_SIZE / 2.0) + (TILE_SIZE / 2.0);
         
         // 创建矮人主体(父实体) - 背景圆
         commands.spawn((
@@ -227,13 +287,16 @@ pub fn spawn_dwarves(mut commands: Commands, asset_server: Res<AssetServer>) {
             Transform::from_xyz(x_pos, y_pos, 2.0),
             Dwarf::new(name.to_string()),
             GridPosition {
-                x: WORLD_WIDTH / 2 + i as i32 - 3,
-                y: WORLD_HEIGHT / 2,
+                x: grid_x,
+                y: grid_y,
             },
             Velocity { x: 0.0, y: 0.0 },
             WorkState {
                 current_task: Some(Task::Idle),
                 work_progress: 0.0,
+                cached_path: Vec::new(),
+                path_index: 0,
+                path_recalc_timer: 0.0,
             },
         ))
         .with_children(|parent| {

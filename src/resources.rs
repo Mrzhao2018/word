@@ -100,3 +100,17 @@ pub struct SelectedDwarf {
 pub struct GameInitialized {
     pub initialized: bool,
 }
+
+/// 世界生成种子（确保地形和矮人生成使用相同的地形数据）
+#[derive(Resource)]
+pub struct WorldSeed {
+    pub seed: u32,
+}
+
+impl Default for WorldSeed {
+    fn default() -> Self {
+        Self {
+            seed: rand::random(),
+        }
+    }
+}

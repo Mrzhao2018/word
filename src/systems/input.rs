@@ -137,6 +137,7 @@ pub fn mouse_control_system(
     camera_query: Query<(&Camera, &GlobalTransform)>,
     selected: Res<SelectedDwarf>,
     mut dwarves: Query<&mut WorkState, With<Dwarf>>,
+    terrain_query: Query<(&GridPosition, &Terrain)>,
 ) {
     // 只在右键点击且有选中矮人时处理
     if !mouse_button.just_pressed(MouseButton::Right) {
@@ -173,12 +174,23 @@ pub fn mouse_control_system(
         return;
     }
     
-    // 给选中的矮人分配任务
-    if let Ok(mut work_state) = dwarves.get_mut(selected_entity) {
-        work_state.current_task = Some(Task::Gathering(GridPosition {
-            x: grid_x,
-            y: grid_y,
-        }));
+    // 检查目标地形是否可行走
+    let mut is_walkable = false;
+    for (terrain_pos, terrain) in terrain_query.iter() {
+        if terrain_pos.x == grid_x && terrain_pos.y == grid_y {
+            is_walkable = terrain.walkable;
+            break;
+        }
+    }
+    
+    // 只有当目标位置可行走时才分配任务
+    if is_walkable {
+        if let Ok(mut work_state) = dwarves.get_mut(selected_entity) {
+            work_state.current_task = Some(Task::Gathering(GridPosition {
+                x: grid_x,
+                y: grid_y,
+            }));
+        }
     }
 }
 
@@ -239,6 +251,85 @@ pub fn dwarf_name_hover_system(
                 ),
                 DwarfNameTag,
             ));
+        }
+    }
+}
+
+/// 地形信息悬停系统 - 显示鼠标下方的地形信息
+pub fn terrain_info_hover_system(
+    mut commands: Commands,
+    windows: Query<&Window>,
+    camera_query: Query<(&Camera, &GlobalTransform)>,
+    terrain_query: Query<(&GridPosition, &Terrain)>,
+    existing_labels: Query<Entity, With<TerrainInfoLabel>>,
+    asset_server: Res<AssetServer>,
+) {
+    // 清除所有现有地形标签
+    for entity in existing_labels.iter() {
+        commands.entity(entity).despawn();
+    }
+    
+    let Ok(window) = windows.single() else {
+        return;
+    };
+    
+    let Some(cursor_position) = window.cursor_position() else {
+        return;
+    };
+    
+    let Ok((camera, camera_transform)) = camera_query.single() else {
+        return;
+    };
+    
+    // 将屏幕坐标转换为世界坐标
+    let Ok(world_position) = camera.viewport_to_world_2d(camera_transform, cursor_position) else {
+        return;
+    };
+    
+    // 转换为网格坐标
+    let grid_x = ((world_position.x + (WORLD_WIDTH as f32 * TILE_SIZE / 2.0)) / TILE_SIZE) as i32;
+    let grid_y = ((world_position.y + (WORLD_HEIGHT as f32 * TILE_SIZE / 2.0)) / TILE_SIZE) as i32;
+    
+    // 边界检查
+    if grid_x < 0 || grid_x >= WORLD_WIDTH || grid_y < 0 || grid_y >= WORLD_HEIGHT {
+        return;
+    }
+    
+    // 查找对应位置的地形
+    for (terrain_pos, terrain) in terrain_query.iter() {
+        if terrain_pos.x == grid_x && terrain_pos.y == grid_y {
+            let font = asset_server.load("fonts/sarasa-gothic-sc-regular.ttf");
+            
+            // 构建地形信息文本
+            let terrain_info = format!(
+                "{}\n资源产出: {:.0}%\n丰富度: {:.1}x\n移动速度: {:.0}%",
+                terrain.terrain_type.description(),
+                terrain.terrain_type.resource_multiplier() * 100.0,
+                terrain.resource_richness,
+                terrain.terrain_type.movement_speed() * 100.0
+            );
+            
+            // 在鼠标位置附近显示信息
+            commands.spawn((
+                Text::new(&terrain_info),
+                TextFont {
+                    font: font.clone(),
+                    font_size: 14.0,
+                    ..default()
+                },
+                TextColor(Color::srgb(1.0, 1.0, 0.9)),
+                Node {
+                    position_type: PositionType::Absolute,
+                    top: Val::Px(cursor_position.y + 10.0),
+                    left: Val::Px(cursor_position.x + 15.0),
+                    padding: UiRect::all(Val::Px(8.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.1, 0.1, 0.15, 0.95)),
+                TerrainInfoLabel,
+            ));
+            
+            break;
         }
     }
 }
