@@ -42,6 +42,10 @@ fn main() {
             ui_update_system,
             input_system,
             update_work_indicators,
+            mouse_selection_system,
+            update_selection_indicator,
+            mouse_control_system,
+            update_dwarf_panel,
         ))
         .run();
 }

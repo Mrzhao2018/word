@@ -53,9 +53,22 @@ pub struct TitleDisplay;
 #[derive(Component)]
 pub struct HelpDisplay;
 
+#[derive(Component)]
+pub struct DwarfPanel;
+
 /// 工作指示器标记
 #[derive(Component)]
 pub struct WorkIndicator;
+
+/// 选择指示器标记
+#[derive(Component)]
+pub struct SelectionIndicator;
+
+/// ASCII字符显示组件
+#[derive(Component)]
+pub struct AsciiChar {
+    pub character: char,
+}
 
 #[derive(Clone, Debug)]
 #[allow(dead_code)] // Building预留用于未来功能

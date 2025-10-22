@@ -129,16 +129,6 @@ pub fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     // 加载支持中文的字体
     let font = asset_server.load("fonts/SourceHanSansCN-Regular.otf");
     
-    // UI背景面板 - 左上角
-    commands.spawn((
-        Sprite {
-            color: Color::srgba(0.0, 0.0, 0.0, 0.7),
-            custom_size: Some(Vec2::new(650.0, 60.0)),
-            ..default()
-        },
-        Transform::from_xyz(-375.0, 360.0, 100.0),
-    ));
-    
     // 资源显示UI - 使用标记组件
     commands.spawn((
         Text::new("资源统计"),
@@ -154,17 +144,8 @@ pub fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
             left: Val::Px(15.0),
             ..default()
         },
+        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
         ResourceDisplay,  // 标记组件
-    ));
-    
-    // 游戏标题背景
-    commands.spawn((
-        Sprite {
-            color: Color::srgba(0.1, 0.1, 0.15, 0.85),
-            custom_size: Some(Vec2::new(400.0, 55.0)),
-            ..default()
-        },
-        Transform::from_xyz(0.0, 360.0, 100.0),
     ));
     
     // 游戏标题
@@ -182,22 +163,13 @@ pub fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
             left: Val::Percent(50.0),
             ..default()
         },
+        BackgroundColor(Color::srgba(0.1, 0.1, 0.15, 0.85)),
         TitleDisplay,  // 标记组件
-    ));
-    
-    // 帮助信息背景
-    commands.spawn((
-        Sprite {
-            color: Color::srgba(0.0, 0.0, 0.0, 0.7),
-            custom_size: Some(Vec2::new(500.0, 90.0)),
-            ..default()
-        },
-        Transform::from_xyz(350.0, -330.0, 100.0),
     ));
     
     // 帮助信息
     commands.spawn((
-        Text::new("操作说明:\nWASD/方向键: 移动视角\n矮人会自动工作采集资源\n观察矮人移动并收集资源"),
+        Text::new("操作说明:\nWASD/方向键: 移动视角\n鼠标左键: 选择矮人\n鼠标右键: 指挥选中的矮人移动到目标位置\n黄色边框 = 选中的矮人"),
         TextFont {
             font: font.clone(),
             font_size: 18.0,
@@ -210,6 +182,7 @@ pub fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
             right: Val::Px(15.0),
             ..default()
         },
+        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
         HelpDisplay,
     ));
 }
@@ -295,5 +268,192 @@ pub fn update_work_indicators(
                 };
             }
         }
+    }
+}
+
+/// 鼠标选择矮人系统
+pub fn mouse_selection_system(
+    mouse_button: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    camera_query: Query<(&Camera, &GlobalTransform)>,
+    dwarves: Query<(Entity, &Transform), With<Dwarf>>,
+    mut selected: ResMut<SelectedDwarf>,
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    existing_panel: Query<Entity, With<DwarfPanel>>,
+) {
+    // 只在左键点击时处理
+    if !mouse_button.just_pressed(MouseButton::Left) {
+        return;
+    }
+    
+    let Ok(window) = windows.single() else {
+        return;
+    };
+    
+    let Some(cursor_position) = window.cursor_position() else {
+        return;
+    };
+    
+    let Ok((camera, camera_transform)) = camera_query.single() else {
+        return;
+    };
+    
+    // 将屏幕坐标转换为世界坐标
+    let Ok(world_position) = camera.viewport_to_world_2d(camera_transform, cursor_position) else {
+        return;
+    };
+    
+    // 查找最近的矮人
+    let mut closest_dwarf: Option<Entity> = None;
+    let mut closest_distance = f32::MAX;
+    
+    for (entity, transform) in dwarves.iter() {
+        let distance = world_position.distance(transform.translation.truncate());
+        if distance < TILE_SIZE && distance < closest_distance {
+            closest_distance = distance;
+            closest_dwarf = Some(entity);
+        }
+    }
+    
+    // 更新选中状态
+    selected.entity = closest_dwarf;
+    
+    // 移除旧的面板
+    for entity in existing_panel.iter() {
+        commands.entity(entity).despawn();
+    }
+    
+    // 如果选中了矮人,创建新面板
+    if closest_dwarf.is_some() {
+        let font = asset_server.load("fonts/SourceHanSansCN-Regular.otf");
+        
+        commands.spawn((
+            Text::new("矮人信息"),
+            TextFont {
+                font: font.clone(),
+                font_size: 18.0,
+                ..default()
+            },
+            TextColor(Color::srgb(1.0, 0.9, 0.6)),
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(100.0),
+                left: Val::Px(15.0),
+                padding: UiRect::all(Val::Px(10.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.1, 0.1, 0.2, 0.9)),
+            DwarfPanel,
+        ));
+    }
+}
+
+/// 更新选择指示器
+pub fn update_selection_indicator(
+    selected: Res<SelectedDwarf>,
+    dwarves: Query<(Entity, &Children), With<Dwarf>>,
+    mut indicators: Query<&mut TextColor, With<SelectionIndicator>>,
+) {
+    for (entity, children) in dwarves.iter() {
+        let is_selected = selected.entity == Some(entity);
+        
+        for child in children.iter() {
+            if let Ok(mut text_color) = indicators.get_mut(child) {
+                // 选中时显示黄色边框,未选中时透明
+                if is_selected {
+                    text_color.0 = Color::srgba(1.0, 1.0, 0.0, 0.9);
+                } else {
+                    text_color.0 = Color::srgba(1.0, 1.0, 0.0, 0.0);
+                }
+            }
+        }
+    }
+}
+
+/// 鼠标控制矮人系统
+pub fn mouse_control_system(
+    mouse_button: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    camera_query: Query<(&Camera, &GlobalTransform)>,
+    selected: Res<SelectedDwarf>,
+    mut dwarves: Query<&mut WorkState, With<Dwarf>>,
+) {
+    // 只在右键点击且有选中矮人时处理
+    if !mouse_button.just_pressed(MouseButton::Right) {
+        return;
+    }
+    
+    let Some(selected_entity) = selected.entity else {
+        return;
+    };
+    
+    let Ok(window) = windows.single() else {
+        return;
+    };
+    
+    let Some(cursor_position) = window.cursor_position() else {
+        return;
+    };
+    
+    let Ok((camera, camera_transform)) = camera_query.single() else {
+        return;
+    };
+    
+    // 将屏幕坐标转换为世界坐标
+    let Ok(world_position) = camera.viewport_to_world_2d(camera_transform, cursor_position) else {
+        return;
+    };
+    
+    // 转换为网格坐标
+    let grid_x = ((world_position.x + (WORLD_WIDTH as f32 * TILE_SIZE / 2.0)) / TILE_SIZE) as i32;
+    let grid_y = ((world_position.y + (WORLD_HEIGHT as f32 * TILE_SIZE / 2.0)) / TILE_SIZE) as i32;
+    
+    // 边界检查
+    if grid_x < 0 || grid_x >= WORLD_WIDTH || grid_y < 0 || grid_y >= WORLD_HEIGHT {
+        return;
+    }
+    
+    // 给选中的矮人分配任务
+    if let Ok(mut work_state) = dwarves.get_mut(selected_entity) {
+        work_state.current_task = Some(Task::Gathering(GridPosition {
+            x: grid_x,
+            y: grid_y,
+        }));
+    }
+}
+
+/// 更新矮人面板信息
+pub fn update_dwarf_panel(
+    selected: Res<SelectedDwarf>,
+    dwarves: Query<(&Dwarf, &WorkState, &GridPosition)>,
+    mut panel_query: Query<&mut Text, With<DwarfPanel>>,
+) {
+    let Some(selected_entity) = selected.entity else {
+        return;
+    };
+    
+    let Ok((dwarf, work_state, pos)) = dwarves.get(selected_entity) else {
+        return;
+    };
+    
+    for mut text in panel_query.iter_mut() {
+        let task_text = match &work_state.current_task {
+            Some(Task::Idle) => "空闲".to_string(),
+            Some(Task::Gathering(target)) => format!("采集 -> ({}, {})", target.x, target.y),
+            Some(Task::Mining(target)) => format!("挖矿 -> ({}, {})", target.x, target.y),
+            Some(Task::Building(target, _)) => format!("建造 -> ({}, {})", target.x, target.y),
+            None => "无任务".to_string(),
+        };
+        
+        **text = format!(
+            "◆ {} ◆\n\n位置: ({}, {})\n健康: {:.0}%\n饥饿: {:.0}%\n快乐: {:.0}%\n\n当前任务:\n{}",
+            dwarf.name,
+            pos.x, pos.y,
+            dwarf.health,
+            dwarf.hunger,
+            dwarf.happiness,
+            task_text,
+        );
     }
 }
