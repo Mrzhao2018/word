@@ -15,7 +15,7 @@ fn main() {
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "矮人要塞式游戏".to_string(),
-                resolution: (1280, 720).into(),
+                resolution: (1400, 800).into(),
                 ..default()
             }),
             ..default()
@@ -41,6 +41,7 @@ fn main() {
             time_system,
             ui_update_system,
             input_system,
+            update_work_indicators,
         ))
         .run();
 }

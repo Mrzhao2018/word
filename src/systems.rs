@@ -129,7 +129,17 @@ pub fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     // 加载支持中文的字体
     let font = asset_server.load("fonts/SourceHanSansCN-Regular.otf");
     
-    // 资源显示UI
+    // UI背景面板 - 左上角
+    commands.spawn((
+        Sprite {
+            color: Color::srgba(0.0, 0.0, 0.0, 0.7),
+            custom_size: Some(Vec2::new(650.0, 60.0)),
+            ..default()
+        },
+        Transform::from_xyz(-375.0, 360.0, 100.0),
+    ));
+    
+    // 资源显示UI - 使用标记组件
     commands.spawn((
         Text::new("资源统计"),
         TextFont {
@@ -137,13 +147,70 @@ pub fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
             font_size: 20.0,
             ..default()
         },
-        TextColor(Color::WHITE),
+        TextColor(Color::srgb(1.0, 0.9, 0.5)),
         Node {
             position_type: PositionType::Absolute,
-            top: Val::Px(10.0),
-            left: Val::Px(10.0),
+            top: Val::Px(15.0),
+            left: Val::Px(15.0),
             ..default()
         },
+        ResourceDisplay,  // 标记组件
+    ));
+    
+    // 游戏标题背景
+    commands.spawn((
+        Sprite {
+            color: Color::srgba(0.1, 0.1, 0.15, 0.85),
+            custom_size: Some(Vec2::new(400.0, 55.0)),
+            ..default()
+        },
+        Transform::from_xyz(0.0, 360.0, 100.0),
+    ));
+    
+    // 游戏标题
+    commands.spawn((
+        Text::new("◆ 矮人要塞式游戏 ◆"),
+        TextFont {
+            font: font.clone(),
+            font_size: 26.0,
+            ..default()
+        },
+        TextColor(Color::srgb(1.0, 0.85, 0.3)),
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(15.0),
+            left: Val::Percent(50.0),
+            ..default()
+        },
+        TitleDisplay,  // 标记组件
+    ));
+    
+    // 帮助信息背景
+    commands.spawn((
+        Sprite {
+            color: Color::srgba(0.0, 0.0, 0.0, 0.7),
+            custom_size: Some(Vec2::new(500.0, 90.0)),
+            ..default()
+        },
+        Transform::from_xyz(350.0, -330.0, 100.0),
+    ));
+    
+    // 帮助信息
+    commands.spawn((
+        Text::new("操作说明:\nWASD/方向键: 移动视角\n矮人会自动工作采集资源\n观察矮人移动并收集资源"),
+        TextFont {
+            font: font.clone(),
+            font_size: 18.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.8, 0.9, 1.0)),
+        Node {
+            position_type: PositionType::Absolute,
+            bottom: Val::Px(15.0),
+            right: Val::Px(15.0),
+            ..default()
+        },
+        HelpDisplay,
     ));
 }
 
@@ -151,17 +218,35 @@ pub fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
 pub fn ui_update_system(
     inventory: Res<GlobalInventory>,
     game_time: Res<GameTime>,
-    mut query: Query<&mut Text>,
+    dwarves: Query<(&Dwarf, &WorkState)>,
+    mut query: Query<&mut Text, With<ResourceDisplay>>,
 ) {
+    // 统计矮人状态
+    let mut idle_count = 0;
+    let mut gathering_count = 0;
+    let mut mining_count = 0;
+    
+    for (_dwarf, work_state) in dwarves.iter() {
+        match &work_state.current_task {
+            Some(Task::Idle) => idle_count += 1,
+            Some(Task::Gathering(_)) => gathering_count += 1,
+            Some(Task::Mining(_)) => mining_count += 1,
+            _ => {}
+        }
+    }
+    
     for mut text in query.iter_mut() {
         **text = format!(
-            "第{}天 {}时\n石头: {} | 木材: {} | 食物: {} | 金属: {}",
+            "第{}天 {}时 | 石头: {} | 木材: {} | 食物: {} | 金属: {}\n矮人状态: 空闲{} 采集{} 挖矿{}",
             game_time.day,
             game_time.hour,
             inventory.stone,
             inventory.wood,
             inventory.food,
             inventory.metal,
+            idle_count,
+            gathering_count,
+            mining_count,
         );
     }
 }
@@ -190,5 +275,25 @@ pub fn input_system(
         }
     if keyboard.pressed(KeyCode::KeyD) || keyboard.pressed(KeyCode::ArrowRight) {
         camera_transform.translation.x += speed;
+    }
+}
+
+/// 更新工作指示器
+pub fn update_work_indicators(
+    dwarves: Query<(&WorkState, &Children), With<Dwarf>>,
+    mut indicators: Query<&mut Sprite, With<WorkIndicator>>,
+) {
+    for (work_state, children) in dwarves.iter() {
+        for child in children.iter() {
+            if let Ok(mut sprite) = indicators.get_mut(child) {
+                // 根据任务类型改变颜色
+                sprite.color = match &work_state.current_task {
+                    Some(Task::Idle) => Color::srgba(0.5, 0.5, 0.5, 0.6), // 灰色 = 空闲
+                    Some(Task::Gathering(_)) => Color::srgba(0.0, 1.0, 0.0, 0.8), // 绿色 = 采集
+                    Some(Task::Mining(_)) => Color::srgba(1.0, 0.5, 0.0, 0.8), // 橙色 = 挖矿
+                    _ => Color::srgba(1.0, 1.0, 1.0, 0.6),
+                };
+            }
+        }
     }
 }

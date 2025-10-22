@@ -43,6 +43,20 @@ pub struct WorkState {
     pub current_task: Option<Task>,
 }
 
+/// UI标记组件
+#[derive(Component)]
+pub struct ResourceDisplay;
+
+#[derive(Component)]
+pub struct TitleDisplay;
+
+#[derive(Component)]
+pub struct HelpDisplay;
+
+/// 工作指示器标记
+#[derive(Component)]
+pub struct WorkIndicator;
+
 #[derive(Clone, Debug)]
 #[allow(dead_code)] // Building预留用于未来功能
 pub enum Task {
