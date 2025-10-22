@@ -209,13 +209,15 @@ pub fn setup_world(mut commands: Commands, asset_server: Res<AssetServer>, mut w
     }
 }
 
-/// 生成矮人 - 改进版，确保生成在可行走地形上
-pub fn spawn_dwarves(mut commands: Commands, asset_server: Res<AssetServer>, world_seed: Res<crate::resources::WorldSeed>) {
+/// 生成矮人 - 改进版，直接查询已生成的地形实体
+pub fn spawn_dwarves(
+    mut commands: Commands, 
+    asset_server: Res<AssetServer>,
+    terrain_query: Query<(&GridPosition, &Terrain)>,
+) {
     let dwarf_names = vec!["乌里克", "索林", "巴林", "朵莉", "芬恩", "格洛因", "诺力"];
     let font = asset_server.load("fonts/sarasa-gothic-sc-regular.ttf");
     
-    // 使用与世界生成相同的种子创建地形生成器
-    let generator = TerrainGenerator::new(world_seed.seed);
     let mut rng = rand::thread_rng();
     
     // 寻找世界中心附近的可行走位置
@@ -229,27 +231,32 @@ pub fn spawn_dwarves(mut commands: Commands, asset_server: Res<AssetServer>, wor
         let mut found_safe_spot = false;
         
         // 尝试多次随机寻找安全位置
-        for _ in 0..100 {
+        for _ in 0..200 {
             // 在中心附近随机选择位置
-            let test_x = center_x + rng.gen_range(-15..15);
-            let test_y = center_y + rng.gen_range(-15..15);
+            let test_x = center_x + rng.gen_range(-20..20);
+            let test_y = center_y + rng.gen_range(-20..20);
             
-            // 边界检查（留出2格边距）
+            // 边界检查
             if test_x < 2 || test_x >= WORLD_WIDTH - 2 || test_y < 2 || test_y >= WORLD_HEIGHT - 2 {
                 continue;
             }
             
-            // 检查该位置及周围是否全部可行走
+            // 检查该位置及周围3x3区域是否全部可行走（查询实际地形）
             let mut all_safe = true;
             for dy in -1..=1 {
                 for dx in -1..=1 {
                     let check_x = test_x + dx;
                     let check_y = test_y + dy;
                     
-                    let terrain = generator.get_terrain(check_x, check_y);
-                    let is_river = generator.is_river(check_x, check_y);
+                    let mut is_walkable = false;
+                    for (terrain_pos, terrain) in terrain_query.iter() {
+                        if terrain_pos.x == check_x && terrain_pos.y == check_y {
+                            is_walkable = terrain.walkable;
+                            break;
+                        }
+                    }
                     
-                    if matches!(terrain, TerrainType::Water | TerrainType::Mountain) || is_river {
+                    if !is_walkable {
                         all_safe = false;
                         break;
                     }
@@ -267,10 +274,58 @@ pub fn spawn_dwarves(mut commands: Commands, asset_server: Res<AssetServer>, wor
             }
         }
         
-        // 如果没找到，使用中心位置作为后备
+        // 如果没找到，螺旋搜索（查询实际地形）
         if !found_safe_spot {
-            grid_x = center_x;
-            grid_y = center_y;
+            'spiral: for radius in 1..40 {
+                for angle_step in 0..(radius * 8) {
+                    let angle = (angle_step as f32 / (radius * 8) as f32) * std::f32::consts::PI * 2.0;
+                    let test_x = center_x + (angle.cos() * radius as f32) as i32;
+                    let test_y = center_y + (angle.sin() * radius as f32) as i32;
+                    
+                    // 边界检查
+                    if test_x < 0 || test_x >= WORLD_WIDTH || test_y < 0 || test_y >= WORLD_HEIGHT {
+                        continue;
+                    }
+                    
+                    // 查询该位置的实际地形
+                    let mut is_walkable = false;
+                    for (terrain_pos, terrain) in terrain_query.iter() {
+                        if terrain_pos.x == test_x && terrain_pos.y == test_y {
+                            is_walkable = terrain.walkable;
+                            break;
+                        }
+                    }
+                    
+                    if is_walkable {
+                        grid_x = test_x;
+                        grid_y = test_y;
+                        found_safe_spot = true;
+                        break 'spiral;
+                    }
+                }
+            }
+        }
+        
+        // 最终后备：全局搜索第一个可行走位置
+        if !found_safe_spot {
+            warn!("矮人 {} 无法在中心附近找到位置，使用全局搜索", name);
+            'global: for search_x in 0..WORLD_WIDTH {
+                for search_y in 0..WORLD_HEIGHT {
+                    for (terrain_pos, terrain) in terrain_query.iter() {
+                        if terrain_pos.x == search_x && terrain_pos.y == search_y && terrain.walkable {
+                            grid_x = search_x;
+                            grid_y = search_y;
+                            found_safe_spot = true;
+                            break 'global;
+                        }
+                    }
+                }
+            }
+        }
+        
+        if !found_safe_spot {
+            error!("矮人 {} 无法找到任何可行走位置！跳过生成。", name);
+            continue;
         }
         
         // 根据网格位置计算世界坐标（与地形对齐）
@@ -297,6 +352,8 @@ pub fn spawn_dwarves(mut commands: Commands, asset_server: Res<AssetServer>, wor
                 cached_path: Vec::new(),
                 path_index: 0,
                 path_recalc_timer: 0.0,
+                task_cooldown: 0.0,
+                task_duration: 0.0,
             },
         ))
         .with_children(|parent| {

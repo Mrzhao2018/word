@@ -42,6 +42,8 @@ pub struct WorkState {
     pub cached_path: Vec<(i32, i32)>, // 缓存的路径
     pub path_index: usize,  // 当前路径点索引
     pub path_recalc_timer: f32, // 路径重新计算计时器
+    pub task_cooldown: f32, // 任务冷却时间（防止频繁切换）
+    pub task_duration: f32, // 当前任务持续时间（防止卡住）
 }
 
 /// UI标记组件

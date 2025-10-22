@@ -19,13 +19,15 @@ pub fn dwarf_work_system(
     let mut rng = rand::thread_rng();
     
     for (mut work_state, pos, mut velocity, _dwarf) in query.iter_mut() {
-        // 更新路径重计算计时器
+        // 更新计时器
         work_state.path_recalc_timer += time.delta_secs();
+        work_state.task_cooldown -= time.delta_secs();
+        work_state.task_duration += time.delta_secs();
         
         match &work_state.current_task {
             Some(Task::Idle) => {
-                // 空闲状态：随机分配新任务
-                if rng.gen_ratio(1, 100) {
+                // 空闲状态：随机分配新任务（增加概率，添加冷却）
+                if work_state.task_cooldown <= 0.0 && rng.gen_ratio(1, 30) {
                     let target_x = rng.gen_range(0..WORLD_WIDTH);
                     let target_y = rng.gen_range(0..WORLD_HEIGHT);
                     
@@ -49,12 +51,26 @@ pub fn dwarf_work_system(
                         work_state.current_task = Some(new_task);
                         work_state.cached_path.clear();
                         work_state.path_index = 0;
+                        work_state.task_cooldown = 2.0; // 2秒冷却
+                        work_state.task_duration = 0.0; // 重置任务持续时间
                     }
                 }
             }
             Some(Task::Gathering(target)) | Some(Task::Mining(target)) => {
                 let current_pos = (pos.x, pos.y);
                 let target_pos = (target.x, target.y);
+                
+                // 任务超时检测（30秒后放弃）
+                if work_state.task_duration > 30.0 {
+                    velocity.x = 0.0;
+                    velocity.y = 0.0;
+                    work_state.current_task = Some(Task::Idle);
+                    work_state.cached_path.clear();
+                    work_state.path_index = 0;
+                    work_state.task_cooldown = 3.0; // 放弃任务后更长的冷却
+                    work_state.task_duration = 0.0;
+                    continue;
+                }
                 
                 // 检查是否已到达目标
                 if current_pos == target_pos {
@@ -67,17 +83,18 @@ pub fn dwarf_work_system(
                     continue;
                 }
                 
-                // 检查是否需要重新计算路径
+                // 检查是否需要重新计算路径（延长重计算间隔）
                 let need_recalc = work_state.cached_path.is_empty() 
                     || work_state.path_index >= work_state.cached_path.len()
-                    || work_state.path_recalc_timer > 2.0; // 每2秒重新计算一次
+                    || work_state.path_recalc_timer > 5.0; // 每5秒重新计算一次（原来是2秒）
                 
                 if need_recalc {
                     // 使用A*算法计算路径
                     match find_path(current_pos, target_pos, &terrain_query) {
                         Some(path) => {
-                            // 直接使用原始路径（暂时禁用简化，因为会导致抽搐）
-                            work_state.cached_path = path;
+                            // 使用改进的路径简化算法（已验证相邻性和方向一致性）
+                            let simplified = simplify_path(path);
+                            work_state.cached_path = simplified;
                             work_state.path_index = 0;
                             work_state.path_recalc_timer = 0.0;
                         }
@@ -88,6 +105,8 @@ pub fn dwarf_work_system(
                             work_state.current_task = Some(Task::Idle);
                             work_state.cached_path.clear();
                             work_state.path_index = 0;
+                            work_state.task_cooldown = 5.0; // 寻路失败后较长冷却
+                            work_state.task_duration = 0.0;
                             continue;
                         }
                     }
@@ -124,19 +143,38 @@ pub fn dwarf_work_system(
                         // 如果还有下一个路径点
                         if work_state.path_index < work_state.cached_path.len() {
                             let next = work_state.cached_path[work_state.path_index];
-                            velocity.x = (next.0 - current_pos.0) as f32;
-                            velocity.y = (next.1 - current_pos.1) as f32;
+                            
+                            // 计算方向（支持简化路径的非相邻点）
+                            let dx = next.0 - current_pos.0;
+                            let dy = next.1 - current_pos.1;
+                            let distance = ((dx * dx + dy * dy) as f32).sqrt();
+                            
+                            if distance > 0.01 {
+                                velocity.x = (dx as f32 / distance).round();
+                                velocity.y = (dy as f32 / distance).round();
+                            } else {
+                                velocity.x = 0.0;
+                                velocity.y = 0.0;
+                            }
                         } else {
                             // 路径走完了，但还没到目标？重新计算
                             work_state.cached_path.clear();
                             work_state.path_index = 0;
                         }
                     } else {
-                        // 向当前路径点移动
+                        // 向当前路径点移动（标准化方向，支持简化路径）
                         let dx = next_waypoint.0 - current_pos.0;
                         let dy = next_waypoint.1 - current_pos.1;
-                        velocity.x = dx as f32;
-                        velocity.y = dy as f32;
+                        
+                        // 计算单位方向向量（支持任意距离的路径点）
+                        let distance = ((dx * dx + dy * dy) as f32).sqrt();
+                        if distance > 0.01 {
+                            velocity.x = (dx as f32 / distance).round();
+                            velocity.y = (dy as f32 / distance).round();
+                        } else {
+                            velocity.x = 0.0;
+                            velocity.y = 0.0;
+                        }
                     }
                 } else {
                     // 没有路径，停止
@@ -207,6 +245,8 @@ pub fn resource_gathering_system(
                         
                         work_state.work_progress = 0.0;
                         work_state.current_task = Some(Task::Idle);
+                        work_state.task_cooldown = 2.0; // 完成任务后2秒冷却
+                        work_state.task_duration = 0.0;
                     }
                 }
             }
@@ -237,6 +277,8 @@ pub fn resource_gathering_system(
                         
                         work_state.work_progress = 0.0;
                         work_state.current_task = Some(Task::Idle);
+                        work_state.task_cooldown = 2.0; // 完成任务后2秒冷却
+                        work_state.task_duration = 0.0;
                     }
                 }
             }

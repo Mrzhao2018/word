@@ -43,7 +43,7 @@ fn main() {
             setup_world,
             spawn_dwarves,
             setup_ui,
-        ).run_if(game_not_initialized))
+        ).chain().run_if(game_not_initialized))
         // 标记游戏已初始化
         .add_systems(OnEnter(GameState::Playing), mark_game_initialized)
         // 进入主菜单时的系统（从游戏返回主菜单时清理）
