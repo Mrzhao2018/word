@@ -110,7 +110,7 @@ pub fn setup_world(mut commands: Commands, asset_server: Res<AssetServer>) {
             ));
             
             // ASCII字符层
-            commands.spawn((
+            let mut entity = commands.spawn((
                 Text2d::new(ascii_char.to_string()),
                 TextFont {
                     font: font.clone(),
@@ -121,6 +121,17 @@ pub fn setup_world(mut commands: Commands, asset_server: Res<AssetServer>) {
                 Transform::from_xyz(pos_x, pos_y, 0.05),
                 AsciiChar { character: ascii_char },
             ));
+            
+            // 为水和树添加动画组件
+            match terrain_type {
+                TerrainType::Water => {
+                    entity.insert(WaterAnimation { phase: rng.gen_range(0.0..6.28) });
+                }
+                TerrainType::Tree => {
+                    entity.insert(TreeSway { offset: rng.gen_range(0.0..6.28) });
+                }
+                _ => {}
+            }
             
             // 添加网格线效果
             commands.spawn((

@@ -21,11 +21,63 @@ impl Default for GlobalInventory {
 }
 
 /// 游戏时间
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct GameTime {
     pub day: u32,
     pub hour: u32,
     pub elapsed: f32,
+    pub time_scale: f32, // 时间流逝速度倍率 (0.0 = 暂停, 1.0 = 正常, 2.0 = 2倍速)
+}
+
+impl Default for GameTime {
+    fn default() -> Self {
+        Self {
+            day: 0,
+            hour: 6,
+            elapsed: 0.0,
+            time_scale: 1.0,
+        }
+    }
+}
+
+impl GameTime {
+    /// 获取当前时间的光照强度 (0.0 = 黑夜, 1.0 = 白天)
+    #[allow(dead_code)]
+    pub fn get_daylight(&self) -> f32 {
+        // 6点日出,18点日落
+        if self.hour < 6 {
+            0.6 // 夜晚 - 调亮了
+        } else if self.hour < 8 {
+            // 日出渐变 6-8点
+            0.6 + (self.hour - 6) as f32 * 0.2
+        } else if self.hour < 18 {
+            1.0 // 白天
+        } else if self.hour < 20 {
+            // 日落渐变 18-20点
+            1.0 - (self.hour - 18) as f32 * 0.2
+        } else {
+            0.6 // 夜晚 - 调亮了
+        }
+    }
+    
+    /// 获取环境光颜色
+    #[allow(dead_code)]
+    pub fn get_ambient_color(&self) -> Color {
+        let daylight = self.get_daylight();
+        if self.hour >= 6 && self.hour < 8 {
+            // 日出 - 温暖的橙色
+            Color::srgb(1.0, 0.85, 0.7)
+        } else if self.hour >= 18 && self.hour < 20 {
+            // 日落 - 温暖的橙色
+            Color::srgb(1.0, 0.85, 0.7)
+        } else if daylight < 0.8 {
+            // 夜晚 - 轻微的蓝色调
+            Color::srgb(0.85, 0.85, 0.95)
+        } else {
+            // 白天 - 正常光
+            Color::srgb(1.0, 1.0, 1.0)
+        }
+    }
 }
 
 /// 选中的矮人

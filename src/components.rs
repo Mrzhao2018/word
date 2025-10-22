@@ -66,9 +66,35 @@ pub struct SelectionIndicator;
 
 /// ASCII字符显示组件
 #[derive(Component)]
+#[allow(dead_code)]
 pub struct AsciiChar {
     pub character: char,
 }
+
+// 移除未使用的 AnimationTimer
+
+/// 水面动画
+#[derive(Component)]
+pub struct WaterAnimation {
+    pub phase: f32,
+}
+
+/// 树木摇摆动画
+#[derive(Component)]
+pub struct TreeSway {
+    pub offset: f32,
+}
+
+/// 粒子效果
+#[derive(Component)]
+pub struct Particle {
+    pub lifetime: f32,
+    pub velocity: Vec2,
+}
+
+/// 昼夜光照覆盖层标记
+#[derive(Component)]
+pub struct DaylightOverlay;
 
 #[derive(Clone, Debug)]
 #[allow(dead_code)] // Building预留用于未来功能

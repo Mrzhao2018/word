@@ -4,15 +4,18 @@ use crate::components::*;
 use crate::resources::*;
 use crate::world::*;
 
-/// 矮人移动系统
+/// 矮人移动系统 - 改进版,包含缓动和动画
 pub fn dwarf_movement_system(
     time: Res<Time>,
     mut query: Query<(&mut Transform, &mut GridPosition, &Velocity), With<Dwarf>>,
 ) {
     for (mut transform, mut grid_pos, velocity) in query.iter_mut() {
-        // 更新位置
-        transform.translation.x += velocity.x * time.delta_secs() * 50.0;
-        transform.translation.y += velocity.y * time.delta_secs() * 50.0;
+        // 只有在有速度时才移动
+        if velocity.x.abs() > 0.01 || velocity.y.abs() > 0.01 {
+            // 计算目标位置(基于速度)
+            transform.translation.x += velocity.x * time.delta_secs() * 100.0;
+            transform.translation.y += velocity.y * time.delta_secs() * 100.0;
+        }
         
         // 更新网格位置
         let new_x = ((transform.translation.x + (WORLD_WIDTH as f32 * TILE_SIZE / 2.0)) / TILE_SIZE) as i32;
@@ -111,7 +114,8 @@ pub fn time_system(
     time: Res<Time>,
     mut game_time: ResMut<GameTime>,
 ) {
-    game_time.elapsed += time.delta_secs();
+    // 应用时间缩放倍率
+    game_time.elapsed += time.delta_secs() * game_time.time_scale;
     
     if game_time.elapsed >= 10.0 { // 每10秒 = 1游戏小时
         game_time.elapsed = 0.0;
@@ -124,10 +128,55 @@ pub fn time_system(
     }
 }
 
+/// 时间控制系统 - 按键调节时间流逝速度
+pub fn time_control_system(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut game_time: ResMut<GameTime>,
+) {
+    use bevy::input::keyboard::KeyCode;
+    
+    // 数字键 1-5 设置时间倍率
+    if keyboard.just_pressed(KeyCode::Digit1) {
+        game_time.time_scale = 0.0; // 暂停
+    }
+    if keyboard.just_pressed(KeyCode::Digit2) {
+        game_time.time_scale = 0.5; // 半速
+    }
+    if keyboard.just_pressed(KeyCode::Digit3) {
+        game_time.time_scale = 1.0; // 正常速度
+    }
+    if keyboard.just_pressed(KeyCode::Digit4) {
+        game_time.time_scale = 2.0; // 2倍速
+    }
+    if keyboard.just_pressed(KeyCode::Digit5) {
+        game_time.time_scale = 5.0; // 5倍速
+    }
+    
+    // 空格键快速切换暂停/正常
+    if keyboard.just_pressed(KeyCode::Space) {
+        if game_time.time_scale > 0.0 {
+            game_time.time_scale = 0.0; // 暂停
+        } else {
+            game_time.time_scale = 1.0; // 恢复正常
+        }
+    }
+}
+
 /// UI设置
 pub fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     // 加载支持中文的字体
     let font = asset_server.load("fonts/SourceHanSansCN-Regular.otf");
+    
+    // 创建昼夜光照覆盖层 - 全屏半透明层
+    commands.spawn((
+        Sprite {
+            color: Color::srgba(0.0, 0.0, 0.0, 0.0), // 初始透明
+            custom_size: Some(Vec2::new(2000.0, 1200.0)), // 覆盖整个屏幕
+            ..default()
+        },
+        Transform::from_xyz(0.0, 0.0, 50.0), // z=50,在地形之上,矮人之下
+        DaylightOverlay,
+    ));
     
     // 资源显示UI - 使用标记组件
     commands.spawn((
@@ -169,7 +218,7 @@ pub fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     
     // 帮助信息
     commands.spawn((
-        Text::new("操作说明:\nWASD/方向键: 移动视角\n鼠标左键: 选择矮人\n鼠标右键: 指挥选中的矮人移动到目标位置\n黄色边框 = 选中的矮人"),
+        Text::new("操作说明:\nWASD/方向键: 移动视角\n鼠标左键: 选择矮人\n鼠标右键: 指挥选中的矮人移动到目标位置\n黄色边框 = 选中的矮人\n\n时间控制:\n空格: 暂停/继续\n1: 暂停 | 2: 半速 | 3: 正常 | 4: 2倍速 | 5: 5倍速"),
         TextFont {
             font: font.clone(),
             font_size: 18.0,
@@ -209,10 +258,26 @@ pub fn ui_update_system(
     }
     
     for mut text in query.iter_mut() {
+        // 时间倍率显示
+        let speed_text = if game_time.time_scale == 0.0 {
+            "⏸暂停"
+        } else if game_time.time_scale == 0.5 {
+            "▶半速"
+        } else if game_time.time_scale == 1.0 {
+            "▶正常"
+        } else if game_time.time_scale == 2.0 {
+            "▶▶2倍速"
+        } else if game_time.time_scale >= 5.0 {
+            "▶▶▶5倍速"
+        } else {
+            &format!("▶{}x", game_time.time_scale)
+        };
+        
         **text = format!(
-            "第{}天 {}时 | 石头: {} | 木材: {} | 食物: {} | 金属: {}\n矮人状态: 空闲{} 采集{} 挖矿{}",
+            "第{}天 {}时 {} | 石头: {} | 木材: {} | 食物: {} | 金属: {}\n矮人状态: 空闲{} 采集{} 挖矿{}",
             game_time.day,
             game_time.hour,
+            speed_text,
             inventory.stone,
             inventory.wood,
             inventory.food,
@@ -455,5 +520,154 @@ pub fn update_dwarf_panel(
             dwarf.happiness,
             task_text,
         );
+    }
+}
+
+/// 水面波光动画
+pub fn water_animation_system(
+    time: Res<Time>,
+    mut query: Query<(&mut Transform, &mut WaterAnimation, &mut TextColor)>,
+) {
+    for (mut transform, mut water, mut color) in query.iter_mut() {
+        water.phase += time.delta_secs() * 2.0;
+        
+        // 上下波动
+        let wave = (water.phase.sin() * 2.0).round();
+        transform.translation.y += wave * 0.1;
+        
+        // 颜色闪烁(模拟波光)
+        let brightness = 0.5 + water.phase.sin() * 0.3;
+        color.0 = Color::srgba(
+            0.05 * brightness,
+            0.15 * brightness,
+            0.4,
+            0.5,
+        );
+    }
+}
+
+/// 树木摇摆动画
+pub fn tree_sway_system(
+    time: Res<Time>,
+    mut query: Query<(&mut Transform, &mut TreeSway)>,
+) {
+    for (mut transform, mut sway) in query.iter_mut() {
+        sway.offset += time.delta_secs() * 1.5;
+        
+        // 轻微的左右摇摆
+        let sway_amount = (sway.offset.sin() * 1.5).round();
+        transform.translation.x += sway_amount * 0.1;
+    }
+}
+
+/// 改进的昼夜循环光照效果 - 只影响颜色叠加层
+pub fn daylight_cycle_system(
+    time_res: Res<GameTime>,
+    mut overlay_query: Query<&mut Sprite, With<DaylightOverlay>>,
+) {
+    // 夜晚使用深蓝色覆盖层
+    let night_color = Color::srgb(0.1, 0.15, 0.3);
+    
+    // 计算覆盖层的透明度
+    let alpha = if time_res.hour >= 20 || time_res.hour < 6 {
+        0.5 // 夜晚有较明显的深色覆盖
+    } else if time_res.hour >= 6 && time_res.hour < 8 {
+        // 日出渐变 (6点到8点)
+        0.5 - (time_res.hour - 6) as f32 * 0.25
+    } else if time_res.hour >= 18 && time_res.hour < 20 {
+        // 日落渐变 (18点到20点)
+        (time_res.hour - 18) as f32 * 0.25
+    } else {
+        0.0 // 白天无覆盖
+    };
+    
+    for mut sprite in overlay_query.iter_mut() {
+        sprite.color = night_color.with_alpha(alpha);
+    }
+}
+
+/// 生成粒子效果
+pub fn spawn_particle_system(
+    mut commands: Commands,
+    dwarves: Query<(&Transform, &WorkState), (With<Dwarf>, Changed<WorkState>)>,
+) {
+    for (transform, work_state) in dwarves.iter() {
+        match &work_state.current_task {
+            Some(Task::Mining(_)) => {
+                // 挖矿粉尘
+                for _ in 0..3 {
+                    let angle = rand::random::<f32>() * std::f32::consts::PI * 2.0;
+                    let speed = rand::random::<f32>() * 20.0 + 10.0;
+                    
+                    commands.spawn((
+                        Sprite {
+                            color: Color::srgba(0.6, 0.5, 0.4, 0.8),
+                            custom_size: Some(Vec2::new(3.0, 3.0)),
+                            ..default()
+                        },
+                        Transform::from_xyz(
+                            transform.translation.x,
+                            transform.translation.y,
+                            3.0,
+                        ),
+                        Particle {
+                            lifetime: 1.0,
+                            velocity: Vec2::new(angle.cos() * speed, angle.sin() * speed),
+                        },
+                    ));
+                }
+            }
+            Some(Task::Gathering(_)) => {
+                // 采集特效
+                for _ in 0..2 {
+                    let angle = rand::random::<f32>() * std::f32::consts::PI * 2.0;
+                    let speed = rand::random::<f32>() * 15.0 + 5.0;
+                    
+                    commands.spawn((
+                        Sprite {
+                            color: Color::srgba(0.2, 0.8, 0.2, 0.9),
+                            custom_size: Some(Vec2::new(4.0, 4.0)),
+                            ..default()
+                        },
+                        Transform::from_xyz(
+                            transform.translation.x,
+                            transform.translation.y + 10.0,
+                            3.0,
+                        ),
+                        Particle {
+                            lifetime: 0.8,
+                            velocity: Vec2::new(angle.cos() * speed, angle.sin() * speed + 20.0),
+                        },
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// 更新粒子
+pub fn particle_system(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut query: Query<(Entity, &mut Transform, &mut Particle, &mut Sprite)>,
+) {
+    for (entity, mut transform, mut particle, mut sprite) in query.iter_mut() {
+        particle.lifetime -= time.delta_secs();
+        
+        if particle.lifetime <= 0.0 {
+            commands.entity(entity).despawn();
+            continue;
+        }
+        
+        // 更新位置
+        transform.translation.x += particle.velocity.x * time.delta_secs();
+        transform.translation.y += particle.velocity.y * time.delta_secs();
+        
+        // 重力
+        particle.velocity.y -= 50.0 * time.delta_secs();
+        
+        // 淡出
+        sprite.color = sprite.color.with_alpha(particle.lifetime);
     }
 }

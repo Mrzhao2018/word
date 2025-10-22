@@ -39,6 +39,7 @@ fn main() {
             resource_gathering_system,
             building_system,
             time_system,
+            time_control_system,  // 时间控制系统
             ui_update_system,
             input_system,
             update_work_indicators,
@@ -46,6 +47,12 @@ fn main() {
             update_selection_indicator,
             mouse_control_system,
             update_dwarf_panel,
+            // 动画系统
+            water_animation_system,
+            tree_sway_system,
+            daylight_cycle_system,  // 重新启用,使用覆盖层方式
+            spawn_particle_system,
+            particle_system,
         ))
         .run();
 }
