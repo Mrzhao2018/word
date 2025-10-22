@@ -30,10 +30,15 @@ pub fn dwarf_movement_system(
 
 /// 矮人工作系统
 pub fn dwarf_work_system(
-    _time: Res<Time>,
+    time: Res<Time>,
     mut query: Query<(&mut WorkState, &GridPosition, &mut Velocity, &Dwarf)>,
     _terrain_query: Query<(&GridPosition, &Terrain)>,
 ) {
+    // 如果时间暂停,AI不做决策
+    if time.delta_secs() <= 0.0001 {
+        return;
+    }
+    
     let mut rng = rand::thread_rng();
     
     for (mut work_state, pos, mut velocity, _dwarf) in query.iter_mut() {
@@ -77,10 +82,16 @@ pub fn dwarf_work_system(
 
 /// 资源采集系统
 pub fn resource_gathering_system(
+    time: Res<Time>,
     _commands: Commands,
     query: Query<(&WorkState, &GridPosition), With<Dwarf>>,
     mut inventory: ResMut<GlobalInventory>,
 ) {
+    // 如果时间暂停,不采集资源
+    if time.delta_secs() <= 0.0001 {
+        return;
+    }
+    
     for (work_state, _pos) in query.iter() {
         if let Some(Task::Gathering(_)) = work_state.current_task {
             // 简化:直接增加资源
@@ -114,8 +125,8 @@ pub fn time_system(
     time: Res<Time>,
     mut game_time: ResMut<GameTime>,
 ) {
-    // 应用时间缩放倍率
-    game_time.elapsed += time.delta_secs() * game_time.time_scale;
+    // 全局时间缩放会自动影响 delta_secs()
+    game_time.elapsed += time.delta_secs();
     
     if game_time.elapsed >= 10.0 { // 每10秒 = 1游戏小时
         game_time.elapsed = 0.0;
@@ -128,37 +139,46 @@ pub fn time_system(
     }
 }
 
-/// 时间控制系统 - 按键调节时间流逝速度
+/// 时间控制系统 - 按键调节全局游戏速度
 pub fn time_control_system(
     keyboard: Res<ButtonInput<KeyCode>>,
+    mut time: ResMut<Time<Virtual>>,
     mut game_time: ResMut<GameTime>,
 ) {
     use bevy::input::keyboard::KeyCode;
     
+    let mut new_scale: Option<f32> = None;
+    
     // 数字键 1-5 设置时间倍率
     if keyboard.just_pressed(KeyCode::Digit1) {
-        game_time.time_scale = 0.0; // 暂停
+        new_scale = Some(0.0); // 暂停
     }
     if keyboard.just_pressed(KeyCode::Digit2) {
-        game_time.time_scale = 0.5; // 半速
+        new_scale = Some(0.5); // 半速
     }
     if keyboard.just_pressed(KeyCode::Digit3) {
-        game_time.time_scale = 1.0; // 正常速度
+        new_scale = Some(1.0); // 正常速度
     }
     if keyboard.just_pressed(KeyCode::Digit4) {
-        game_time.time_scale = 2.0; // 2倍速
+        new_scale = Some(2.0); // 2倍速
     }
     if keyboard.just_pressed(KeyCode::Digit5) {
-        game_time.time_scale = 5.0; // 5倍速
+        new_scale = Some(5.0); // 5倍速
     }
     
     // 空格键快速切换暂停/正常
     if keyboard.just_pressed(KeyCode::Space) {
         if game_time.time_scale > 0.0 {
-            game_time.time_scale = 0.0; // 暂停
+            new_scale = Some(0.0); // 暂停
         } else {
-            game_time.time_scale = 1.0; // 恢复正常
+            new_scale = Some(1.0); // 恢复正常
         }
+    }
+    
+    // 应用新的时间缩放到全局时间和游戏时间
+    if let Some(scale) = new_scale {
+        time.set_relative_speed(scale);
+        game_time.time_scale = scale;
     }
 }
 
@@ -565,25 +585,62 @@ pub fn daylight_cycle_system(
     time_res: Res<GameTime>,
     mut overlay_query: Query<&mut Sprite, With<DaylightOverlay>>,
 ) {
-    // 夜晚使用深蓝色覆盖层
-    let night_color = Color::srgb(0.1, 0.15, 0.3);
+    // 计算精确的时间（包含小数部分）
+    let time_of_day = time_res.hour as f32 + (time_res.elapsed / 10.0);
     
-    // 计算覆盖层的透明度
-    let alpha = if time_res.hour >= 20 || time_res.hour < 6 {
-        0.5 // 夜晚有较明显的深色覆盖
-    } else if time_res.hour >= 6 && time_res.hour < 8 {
-        // 日出渐变 (6点到8点)
-        0.5 - (time_res.hour - 6) as f32 * 0.25
-    } else if time_res.hour >= 18 && time_res.hour < 20 {
-        // 日落渐变 (18点到20点)
-        (time_res.hour - 18) as f32 * 0.25
+    // 定义关键时间点
+    const SUNRISE_START: f32 = 5.0;  // 日出开始
+    const SUNRISE_END: f32 = 7.0;    // 日出结束
+    const SUNSET_START: f32 = 17.0;  // 日落开始
+    const SUNSET_END: f32 = 19.0;    // 日落结束
+    
+    // 不同时段的颜色和透明度
+    let (color, alpha) = if time_of_day >= SUNRISE_END && time_of_day < SUNSET_START {
+        // 白天 (7:00-17:00) - 无覆盖
+        (Color::srgb(0.1, 0.15, 0.3), 0.0)
+        
+    } else if time_of_day >= SUNSET_END || time_of_day < SUNRISE_START {
+        // 深夜 (19:00-5:00) - 深蓝色覆盖
+        (Color::srgb(0.05, 0.1, 0.25), 0.6)
+        
+    } else if time_of_day >= SUNRISE_START && time_of_day < SUNRISE_END {
+        // 日出过渡 (5:00-7:00) - 从深夜到白天
+        let progress = (time_of_day - SUNRISE_START) / (SUNRISE_END - SUNRISE_START);
+        let smooth_progress = smooth_step(progress); // 使用平滑插值
+        
+        // 从深蓝夜色过渡到温暖晨光
+        let sunrise_color = Color::srgb(
+            0.05 + smooth_progress * 0.15,  // 轻微橙色
+            0.1 + smooth_progress * 0.1,
+            0.25 - smooth_progress * 0.1,   // 减少蓝色
+        );
+        let alpha = 0.6 - smooth_progress * 0.6; // 从0.6渐变到0
+        (sunrise_color, alpha)
+        
     } else {
-        0.0 // 白天无覆盖
+        // 日落过渡 (17:00-19:00) - 从白天到深夜
+        let progress = (time_of_day - SUNSET_START) / (SUNSET_END - SUNSET_START);
+        let smooth_progress = smooth_step(progress); // 使用平滑插值
+        
+        // 从温暖夕阳过渡到深蓝夜色
+        let sunset_color = Color::srgb(
+            0.2 - smooth_progress * 0.15,   // 渐少橙色
+            0.15 - smooth_progress * 0.05,
+            0.15 + smooth_progress * 0.1,   // 增加蓝色
+        );
+        let alpha = smooth_progress * 0.6; // 从0渐变到0.6
+        (sunset_color, alpha)
     };
     
     for mut sprite in overlay_query.iter_mut() {
-        sprite.color = night_color.with_alpha(alpha);
+        sprite.color = color.with_alpha(alpha);
     }
+}
+
+// 平滑步进函数 - 提供更自然的过渡曲线
+fn smooth_step(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t) // Hermite插值
 }
 
 /// 生成粒子效果
