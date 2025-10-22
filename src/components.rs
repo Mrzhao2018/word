@@ -2,7 +2,6 @@ use bevy::prelude::*;
 
 /// 矮人组件
 #[derive(Component)]
-#[allow(dead_code)] // 字段预留用于未来健康/饥饿系统
 pub struct Dwarf {
     pub name: String,
     pub health: f32,
@@ -10,9 +9,7 @@ pub struct Dwarf {
     pub happiness: f32,
 }
 
-// 实现方法以避免未使用警告
 impl Dwarf {
-    #[allow(dead_code)]
     pub fn new(name: String) -> Self {
         Self {
             name,
@@ -69,14 +66,32 @@ pub struct SelectionIndicator;
 #[derive(Component)]
 pub struct DwarfNameTag;
 
+/// 主菜单UI标记
+#[derive(Component)]
+pub struct MainMenuUI;
+
+/// 开始游戏按钮
+#[derive(Component)]
+pub struct StartButton;
+
+/// 暂停菜单UI标记
+#[derive(Component)]
+pub struct PauseMenuUI;
+
+/// 继续游戏按钮
+#[derive(Component)]
+pub struct ResumeButton;
+
+/// 返回主菜单按钮
+#[derive(Component)]
+pub struct BackToMenuButton;
+
 /// ASCII字符显示组件
 #[derive(Component)]
-#[allow(dead_code)]
 pub struct AsciiChar {
+    #[allow(dead_code)]  // 保留用于未来可能的字符判断逻辑
     pub character: char,
 }
-
-// 移除未使用的 AnimationTimer
 
 /// 水面动画
 #[derive(Component)]
@@ -101,36 +116,22 @@ pub struct Particle {
 #[derive(Component)]
 pub struct DaylightOverlay;
 
+/// 网格线标记
+#[derive(Component)]
+pub struct GridLine;
+
 #[derive(Clone, Debug)]
-#[allow(dead_code)] // Building预留用于未来功能
 pub enum Task {
     Mining(GridPosition),
+    #[allow(dead_code)]  // 保留用于未来建筑系统
     Building(GridPosition, BuildingType),
     Gathering(GridPosition),
     Idle,
 }
 
-/// 资源类型
-#[derive(Component, Clone, Copy, PartialEq)]
-#[allow(dead_code)] // 预留用于未来功能
-pub enum ResourceType {
-    Stone,
-    Wood,
-    Food,
-    Metal,
-}
-
-/// 资源堆
-#[derive(Component)]
-#[allow(dead_code)] // 预留用于未来功能
-pub struct ResourcePile {
-    pub resource_type: ResourceType,
-    pub amount: u32,
-}
-
 /// 建筑类型
 #[derive(Clone, Debug, PartialEq)]
-#[allow(dead_code)] // 预留用于未来功能
+#[allow(dead_code)]  // 保留用于未来建筑系统扩展
 pub enum BuildingType {
     Workshop,
     Stockpile,
@@ -140,15 +141,14 @@ pub enum BuildingType {
 
 /// 建筑组件
 #[derive(Component)]
-#[allow(dead_code)] // 预留用于未来功能
 pub struct Building {
+    #[allow(dead_code)]  // 保留用于未来建筑系统扩展
     pub building_type: BuildingType,
     pub construction_progress: f32, // 0.0 到 1.0
 }
 
 /// 地形类型
 #[derive(Component, Clone, Copy, PartialEq)]
-#[allow(dead_code)] // Mountain预留用于未来功能
 pub enum TerrainType {
     Grass,
     Stone,
@@ -159,20 +159,8 @@ pub enum TerrainType {
 
 /// 地形tile
 #[derive(Component)]
-#[allow(dead_code)] // 字段预留用于未来碰撞检测和寻路
 pub struct Terrain {
     pub terrain_type: TerrainType,
+    #[allow(dead_code)]  // 保留用于未来寻路系统
     pub walkable: bool,
-}
-
-// 实现方法以避免未使用警告
-#[allow(dead_code)]
-impl Terrain {
-    pub fn is_walkable(&self) -> bool {
-        self.walkable
-    }
-    
-    pub fn get_type(&self) -> TerrainType {
-        self.terrain_type
-    }
 }

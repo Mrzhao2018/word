@@ -1,5 +1,14 @@
 use bevy::prelude::*;
 
+/// 游戏状态
+#[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
+pub enum GameState {
+    #[default]
+    MainMenu,
+    Playing,
+    Paused,
+}
+
 /// 全局资源库存
 #[derive(Resource)]
 pub struct GlobalInventory {
@@ -42,7 +51,7 @@ impl Default for GameTime {
 
 impl GameTime {
     /// 获取当前时间的光照强度 (0.0 = 黑夜, 1.0 = 白天)
-    #[allow(dead_code)]
+    #[allow(dead_code)]  // 保留用于未来更复杂的昼夜系统
     pub fn get_daylight(&self) -> f32 {
         // 6点日出,18点日落
         if self.hour < 6 {
@@ -61,7 +70,7 @@ impl GameTime {
     }
     
     /// 获取环境光颜色
-    #[allow(dead_code)]
+    #[allow(dead_code)]  // 保留用于未来更复杂的光照系统
     pub fn get_ambient_color(&self) -> Color {
         let daylight = self.get_daylight();
         if self.hour >= 6 && self.hour < 8 {
@@ -86,18 +95,8 @@ pub struct SelectedDwarf {
     pub entity: Option<Entity>,
 }
 
-// 实现方法以避免未使用警告
-#[allow(dead_code)]
-impl SelectedDwarf {
-    pub fn select(&mut self, entity: Entity) {
-        self.entity = Some(entity);
-    }
-    
-    pub fn deselect(&mut self) {
-        self.entity = None;
-    }
-    
-    pub fn is_selected(&self, entity: Entity) -> bool {
-        self.entity == Some(entity)
-    }
+/// 游戏是否已初始化（用于区分首次进入和从暂停恢复）
+#[derive(Resource, Default)]
+pub struct GameInitialized {
+    pub initialized: bool,
 }

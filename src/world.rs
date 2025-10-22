@@ -10,7 +10,9 @@ pub const TILE_SIZE: f32 = 32.0;
 /// 游戏世界资源
 #[derive(Resource)]
 pub struct GameWorld {
+    #[allow(dead_code)]  // 保留用于未来世界扩展
     pub width: i32,
+    #[allow(dead_code)]  // 保留用于未来世界扩展
     pub height: i32,
 }
 
@@ -23,26 +25,10 @@ impl Default for GameWorld {
     }
 }
 
-// 实现方法以避免未使用警告
-#[allow(dead_code)]
-impl GameWorld {
-    pub fn in_bounds(&self, x: i32, y: i32) -> bool {
-        x >= 0 && x < self.width && y >= 0 && y < self.height
-    }
-    
-    pub fn get_tile_index(&self, x: i32, y: i32) -> Option<usize> {
-        if self.in_bounds(x, y) {
-            Some((y * self.width + x) as usize)
-        } else {
-            None
-        }
-    }
-}
-
 /// 生成世界地形
 pub fn setup_world(mut commands: Commands, asset_server: Res<AssetServer>) {
     let mut rng = rand::thread_rng();
-    let font = asset_server.load("fonts/SourceHanSansCN-Regular.otf");
+    let font = asset_server.load("fonts/sarasa-gothic-sc-regular.ttf");
     
     for x in 0..WORLD_WIDTH {
         for y in 0..WORLD_HEIGHT {
@@ -120,6 +106,7 @@ pub fn setup_world(mut commands: Commands, asset_server: Res<AssetServer>) {
                 TextColor(char_color),
                 Transform::from_xyz(pos_x, pos_y, 0.05),
                 AsciiChar { character: ascii_char },
+                GridPosition { x, y },  // 添加GridPosition以便清理
             ));
             
             // 为水和树添加动画组件
@@ -141,6 +128,7 @@ pub fn setup_world(mut commands: Commands, asset_server: Res<AssetServer>) {
                     ..default()
                 },
                 Transform::from_xyz(pos_x, pos_y, 0.1),
+                GridLine,  // 添加标记组件
             ));
         }
     }
@@ -149,7 +137,7 @@ pub fn setup_world(mut commands: Commands, asset_server: Res<AssetServer>) {
 /// 生成矮人
 pub fn spawn_dwarves(mut commands: Commands, asset_server: Res<AssetServer>) {
     let dwarf_names = vec!["乌里克", "索林", "巴林", "朵莉", "芬恩", "格洛因", "诺力"];
-    let font = asset_server.load("fonts/SourceHanSansCN-Regular.otf");
+    let font = asset_server.load("fonts/sarasa-gothic-sc-regular.ttf");
     
     for (i, name) in dwarf_names.iter().enumerate() {
         let x_pos = (i as f32 * 50.0) - 150.0;
