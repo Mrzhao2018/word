@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use rand::Rng;
+use noise::{NoiseFn, Perlin};
 use crate::components::*;
 
 /// 世界大小常量
@@ -25,25 +26,84 @@ impl Default for GameWorld {
     }
 }
 
-/// 生成世界地形
+/// 地形生成器 - 使用多层噪声创建自然地形
+struct TerrainGenerator {
+    elevation: Perlin,  // 高度噪声
+    moisture: Perlin,   // 湿度噪声
+    temperature: Perlin, // 温度噪声
+    detail: Perlin,     // 细节噪声
+}
+
+impl TerrainGenerator {
+    fn new(seed: u32) -> Self {
+        Self {
+            elevation: Perlin::new(seed),
+            moisture: Perlin::new(seed + 1),
+            temperature: Perlin::new(seed + 2),
+            detail: Perlin::new(seed + 3),
+        }
+    }
+    
+    /// 获取指定位置的地形类型
+    fn get_terrain(&self, x: i32, y: i32) -> TerrainType {
+        let scale = 0.1; // 噪声缩放因子，值越小地形变化越平缓
+        
+        // 多层噪声采样
+        let elevation = self.elevation.get([x as f64 * scale, y as f64 * scale]);
+        let moisture = self.moisture.get([x as f64 * scale * 0.8, y as f64 * scale * 0.8]);
+        let temperature = self.temperature.get([x as f64 * scale * 1.2, y as f64 * scale * 1.2]);
+        let detail = self.detail.get([x as f64 * scale * 3.0, y as f64 * scale * 3.0]) * 0.1;
+        
+        // 组合噪声值
+        let final_elevation = elevation + detail;
+        let final_moisture = moisture + detail * 0.5;
+        
+        // 基于高度和湿度决定地形类型
+        if final_elevation < -0.3 {
+            TerrainType::Water  // 低洼区域 = 水
+        } else if final_elevation > 0.5 {
+            if temperature > 0.3 {
+                TerrainType::Mountain  // 高海拔 + 高温 = 山脉
+            } else {
+                TerrainType::Stone     // 高海拔 + 低温 = 石地
+            }
+        } else if final_moisture > 0.3 && final_elevation > -0.1 {
+            TerrainType::Tree  // 湿润 + 中等海拔 = 森林
+        } else if final_moisture < -0.2 {
+            TerrainType::Stone  // 干燥区域 = 石地
+        } else {
+            TerrainType::Grass  // 默认草地
+        }
+    }
+    
+    /// 检查是否应该生成河流
+    fn is_river(&self, x: i32, y: i32) -> bool {
+        let river_scale = 0.05;
+        let river_noise = self.moisture.get([x as f64 * river_scale, y as f64 * river_scale]);
+        
+        // 河流沿着湿度噪声的特定等值线
+        (river_noise.abs() < 0.05) && (self.elevation.get([x as f64 * 0.1, y as f64 * 0.1]) < 0.3)
+    }
+}
+
+/// 生成世界地形 - 改进版，使用噪声生成
 pub fn setup_world(mut commands: Commands, asset_server: Res<AssetServer>) {
     let mut rng = rand::thread_rng();
     let font = asset_server.load("fonts/sarasa-gothic-sc-regular.ttf");
     
+    // 创建地形生成器
+    let seed = rng.gen();
+    let generator = TerrainGenerator::new(seed);
+    
     for x in 0..WORLD_WIDTH {
         for y in 0..WORLD_HEIGHT {
-            // 随机生成地形
-            let terrain_type = if rng.gen_ratio(1, 10) {
-                TerrainType::Tree
-            } else if rng.gen_ratio(1, 15) {
-                TerrainType::Stone
-            } else if rng.gen_ratio(1, 30) {
-                TerrainType::Mountain
-            } else if y < 5 && rng.gen_ratio(1, 20) {
-                TerrainType::Water
-            } else {
-                TerrainType::Grass
-            };
+            // 使用噪声生成地形
+            let mut terrain_type = generator.get_terrain(x, y);
+            
+            // 检查河流覆盖
+            if generator.is_river(x, y) && terrain_type != TerrainType::Mountain {
+                terrain_type = TerrainType::Water;
+            }
             
             let walkable = !matches!(terrain_type, TerrainType::Water | TerrainType::Mountain);
             
@@ -52,38 +112,51 @@ pub fn setup_world(mut commands: Commands, asset_server: Res<AssetServer>) {
             let (color, ascii_char, char_color) = match terrain_type {
                 TerrainType::Grass => (
                     Color::srgb(0.25 + color_variation, 0.65 + color_variation * 1.5, 0.2 + color_variation),
-                    if rng.gen_ratio(1, 20) { '"' } else { ',' },
-                    Color::srgba(0.1, 0.3, 0.1, 0.4),  // 深绿色字符
+                    if rng.gen_ratio(1, 20) { '"' } else if rng.gen_ratio(1, 15) { '.' } else { ',' },
+                    Color::srgba(0.1, 0.3, 0.1, 0.4),
                 ),
                 TerrainType::Stone => (
                     Color::srgb(0.45 + color_variation, 0.45 + color_variation, 0.5 + color_variation),
                     if rng.gen_ratio(1, 3) { '#' } else { '%' },
-                    Color::srgba(0.2, 0.2, 0.25, 0.5),  // 深灰色字符
+                    Color::srgba(0.2, 0.2, 0.25, 0.5),
                 ),
-                TerrainType::Tree => (
-                    Color::srgb(0.2 + color_variation, 0.55 + color_variation, 0.2 + color_variation),
-                    '&',
-                    Color::srgba(0.05, 0.2, 0.05, 0.6),  // 深绿色字符
-                ),
+                TerrainType::Tree => {
+                    // 树木有更多变化
+                    let tree_char = if rng.gen_ratio(1, 5) { '♣' } else { '&' };
+                    (
+                        Color::srgb(0.2 + color_variation, 0.55 + color_variation, 0.2 + color_variation),
+                        tree_char,
+                        Color::srgba(0.05, 0.2, 0.05, 0.6),
+                    )
+                },
                 TerrainType::Water => (
                     Color::srgb(0.15 + color_variation, 0.35 + color_variation, 0.75 + color_variation),
-                    '~',
-                    Color::srgba(0.05, 0.15, 0.4, 0.5),  // 深蓝色字符
+                    if rng.gen_ratio(1, 3) { '≈' } else { '~' },
+                    Color::srgba(0.05, 0.15, 0.4, 0.5),
                 ),
                 TerrainType::Mountain => (
                     Color::srgb(0.5 + color_variation, 0.4 + color_variation, 0.3 + color_variation),
-                    '^',
-                    Color::srgba(0.25, 0.15, 0.1, 0.6),  // 深棕色字符
+                    if rng.gen_ratio(1, 3) { '▲' } else { '^' },
+                    Color::srgba(0.25, 0.15, 0.1, 0.6),
                 ),
             };
             
             let pos_x = x as f32 * TILE_SIZE - (WORLD_WIDTH as f32 * TILE_SIZE / 2.0);
             let pos_y = y as f32 * TILE_SIZE - (WORLD_HEIGHT as f32 * TILE_SIZE / 2.0);
             
-            // 主地形方块(背景)
+            // 计算资源丰富度（基于细节噪声）
+            let detail_noise = generator.detail.get([x as f64 * 0.3, y as f64 * 0.3]);
+            let resource_richness = 0.8 + (detail_noise as f32 + 1.0) * 0.35; // 0.8 - 1.5
+            
+            // 主地形方块(背景) - 添加渐变效果
+            let gradient_offset = rng.gen_range(-0.02..0.02);
             commands.spawn((
                 Sprite {
-                    color,
+                    color: Color::srgb(
+                        (color.to_srgba().red + gradient_offset).clamp(0.0, 1.0),
+                        (color.to_srgba().green + gradient_offset).clamp(0.0, 1.0),
+                        (color.to_srgba().blue + gradient_offset).clamp(0.0, 1.0),
+                    ),
                     custom_size: Some(Vec2::new(TILE_SIZE - 1.0, TILE_SIZE - 1.0)),
                     ..default()
                 },
@@ -91,6 +164,7 @@ pub fn setup_world(mut commands: Commands, asset_server: Res<AssetServer>) {
                 Terrain {
                     terrain_type,
                     walkable,
+                    resource_richness,
                 },
                 GridPosition { x, y },
             ));
@@ -106,7 +180,7 @@ pub fn setup_world(mut commands: Commands, asset_server: Res<AssetServer>) {
                 TextColor(char_color),
                 Transform::from_xyz(pos_x, pos_y, 0.05),
                 AsciiChar { character: ascii_char },
-                GridPosition { x, y },  // 添加GridPosition以便清理
+                GridPosition { x, y },
             ));
             
             // 为水和树添加动画组件
@@ -120,15 +194,15 @@ pub fn setup_world(mut commands: Commands, asset_server: Res<AssetServer>) {
                 _ => {}
             }
             
-            // 添加网格线效果
+            // 添加网格线效果（更细腻）
             commands.spawn((
                 Sprite {
-                    color: Color::srgba(0.0, 0.0, 0.0, 0.1),
+                    color: Color::srgba(0.0, 0.0, 0.0, 0.08),
                     custom_size: Some(Vec2::new(TILE_SIZE, TILE_SIZE)),
                     ..default()
                 },
                 Transform::from_xyz(pos_x, pos_y, 0.1),
-                GridLine,  // 添加标记组件
+                GridLine,
             ));
         }
     }

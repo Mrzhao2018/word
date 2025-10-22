@@ -148,7 +148,7 @@ pub struct Building {
 }
 
 /// 地形类型
-#[derive(Component, Clone, Copy, PartialEq)]
+#[derive(Component, Clone, Copy, PartialEq, Debug)]
 pub enum TerrainType {
     Grass,
     Stone,
@@ -157,10 +157,48 @@ pub enum TerrainType {
     Mountain,
 }
 
+impl TerrainType {
+    /// 获取地形的资源产出倍率
+    pub fn resource_multiplier(&self) -> f32 {
+        match self {
+            TerrainType::Tree => 1.5,      // 森林采集效率高
+            TerrainType::Stone => 1.2,     // 石地挖矿效率较高
+            TerrainType::Mountain => 1.8,  // 山脉挖矿效率最高
+            TerrainType::Water => 0.8,     // 水边采集效率略低
+            TerrainType::Grass => 1.0,     // 草地标准效率
+        }
+    }
+    
+    /// 获取地形的移动速度倍率
+    #[allow(dead_code)]  // 保留用于未来寻路系统
+    pub fn movement_speed(&self) -> f32 {
+        match self {
+            TerrainType::Grass => 1.0,     // 草地正常速度
+            TerrainType::Stone => 0.9,     // 石地略慢
+            TerrainType::Tree => 0.8,      // 森林较慢
+            TerrainType::Water => 0.0,     // 水域无法通行
+            TerrainType::Mountain => 0.0,  // 山脉无法通行
+        }
+    }
+    
+    /// 获取地形的描述
+    #[allow(dead_code)]  // 保留用于未来UI提示系统
+    pub fn description(&self) -> &'static str {
+        match self {
+            TerrainType::Grass => "草地 - 适合采集食物",
+            TerrainType::Stone => "石地 - 适合采集石头",
+            TerrainType::Tree => "森林 - 富含木材和食物",
+            TerrainType::Water => "水域 - 可以钓鱼",
+            TerrainType::Mountain => "山脉 - 富含矿石和金属",
+        }
+    }
+}
+
 /// 地形tile
 #[derive(Component)]
 pub struct Terrain {
     pub terrain_type: TerrainType,
     #[allow(dead_code)]  // 保留用于未来寻路系统
     pub walkable: bool,
+    pub resource_richness: f32,  // 资源丰富度 0.5-1.5
 }

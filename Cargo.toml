@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 bevy = "0.17.2"
 rand = "0.8"
+noise = "0.9"
 
 [profile.dev]
 opt-level = 1

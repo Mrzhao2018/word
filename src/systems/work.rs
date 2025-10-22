@@ -58,7 +58,7 @@ pub fn dwarf_work_system(
     }
 }
 
-/// 资源采集系统 - 改进版，基于工作进度
+/// 资源采集系统 - 改进版，基于工作进度和地形属性
 pub fn resource_gathering_system(
     time: Res<Time>,
     mut query: Query<(&mut WorkState, &GridPosition), With<Dwarf>>,
@@ -78,32 +78,41 @@ pub fn resource_gathering_system(
             Some(Task::Gathering(target)) => {
                 // 到达目标位置才能采集
                 if pos.x == target.x && pos.y == target.y {
-                    // 累积工作进度
-                    work_state.work_progress += time.delta_secs() * 0.5; // 2秒完成一次采集
+                    // 获取地形信息
+                    let mut terrain_multiplier = 1.0;
+                    let mut found_terrain = TerrainType::Grass;
+                    
+                    for (terrain_pos, terrain) in terrain_query.iter() {
+                        if terrain_pos.x == target.x && terrain_pos.y == target.y {
+                            found_terrain = terrain.terrain_type;
+                            // 采集速度 = 地形倍率 × 资源丰富度
+                            terrain_multiplier = terrain.terrain_type.resource_multiplier() * terrain.resource_richness;
+                            break;
+                        }
+                    }
+                    
+                    // 累积工作进度（考虑地形加成）
+                    work_state.work_progress += time.delta_secs() * 0.5 * terrain_multiplier;
                     
                     if work_state.work_progress >= 1.0 {
                         // 完成采集，根据地形类型获得资源
-                        let mut found_terrain = TerrainType::Grass;
-                        for (terrain_pos, terrain) in terrain_query.iter() {
-                            if terrain_pos.x == target.x && terrain_pos.y == target.y {
-                                found_terrain = terrain.terrain_type;
-                                break;
-                            }
-                        }
-                        
                         match found_terrain {
                             TerrainType::Tree => {
-                                inventory.wood += 1;
-                                inventory.food += 1; // 树木可能有果实
+                                let wood_yield = ((1.0 * terrain_multiplier) as i32).max(1) as u32;
+                                let food_yield = ((1.0 * terrain_multiplier) as i32).max(1) as u32;
+                                inventory.wood += wood_yield;
+                                inventory.food += food_yield;
                             }
                             TerrainType::Grass => {
-                                inventory.food += 2; // 草地采集食物
+                                let food_yield = ((2.0 * terrain_multiplier) as i32).max(1) as u32;
+                                inventory.food += food_yield;
                             }
                             TerrainType::Water => {
-                                inventory.food += 1; // 水边钓鱼
+                                let food_yield = ((1.0 * terrain_multiplier) as i32).max(1) as u32;
+                                inventory.food += food_yield;
                             }
                             _ => {
-                                inventory.food += 1; // 默认食物
+                                inventory.food += 1;
                             }
                         }
                         
@@ -117,29 +126,37 @@ pub fn resource_gathering_system(
             Some(Task::Mining(target)) => {
                 // 到达目标位置才能挖矿
                 if pos.x == target.x && pos.y == target.y {
-                    // 累积工作进度
-                    work_state.work_progress += time.delta_secs() * 0.3; // 3.3秒完成一次挖矿
+                    // 获取地形信息
+                    let mut terrain_multiplier = 1.0;
+                    let mut found_terrain = TerrainType::Stone;
+                    
+                    for (terrain_pos, terrain) in terrain_query.iter() {
+                        if terrain_pos.x == target.x && terrain_pos.y == target.y {
+                            found_terrain = terrain.terrain_type;
+                            // 挖矿速度 = 地形倍率 × 资源丰富度
+                            terrain_multiplier = terrain.terrain_type.resource_multiplier() * terrain.resource_richness;
+                            break;
+                        }
+                    }
+                    
+                    // 累积工作进度（考虑地形加成）
+                    work_state.work_progress += time.delta_secs() * 0.3 * terrain_multiplier;
                     
                     if work_state.work_progress >= 1.0 {
                         // 完成挖矿，根据地形类型获得资源
-                        let mut found_terrain = TerrainType::Stone;
-                        for (terrain_pos, terrain) in terrain_query.iter() {
-                            if terrain_pos.x == target.x && terrain_pos.y == target.y {
-                                found_terrain = terrain.terrain_type;
-                                break;
-                            }
-                        }
-                        
                         match found_terrain {
                             TerrainType::Stone => {
-                                inventory.stone += 3; // 石头地形产出更多石头
+                                let stone_yield = ((3.0 * terrain_multiplier) as i32).max(1) as u32;
+                                inventory.stone += stone_yield;
                             }
                             TerrainType::Mountain => {
-                                inventory.stone += 2;
-                                inventory.metal += 1; // 山脉可能有金属
+                                let stone_yield = ((2.0 * terrain_multiplier) as i32).max(1) as u32;
+                                let metal_yield = ((1.0 * terrain_multiplier) as i32).max(1) as u32;
+                                inventory.stone += stone_yield;
+                                inventory.metal += metal_yield;
                             }
                             _ => {
-                                inventory.stone += 1; // 其他地形也能挖到一些石头
+                                inventory.stone += 1;
                             }
                         }
                         
