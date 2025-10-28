@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy::log::LogPlugin;
 
 mod components;
 mod systems;
@@ -12,15 +13,23 @@ use world::*;
 
 fn main() {
     App::new()
-        // Bevy默认插件
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "矮人要塞式游戏".to_string(),
-                resolution: (1400, 800).into(),
+        // Bevy默认插件 - 配置日志过滤器
+        .add_plugins(DefaultPlugins
+            .set(LogPlugin {
+                // 完全屏蔽wgpu_hal的所有日志，只保留关键信息
+                filter: "wgpu=warn,wgpu_core=warn,wgpu_hal=off,bevy_render=info,dwarf_fortress_game=debug".into(),
+                level: bevy::log::Level::INFO,
                 ..default()
-            }),
-            ..default()
-        }))
+            })
+            .set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: "矮人要塞式游戏".to_string(),
+                    resolution: (1400, 800).into(),
+                    ..default()
+                }),
+                ..default()
+            })
+        )
         // 状态管理
         .init_state::<GameState>()
         // 资源

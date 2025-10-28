@@ -150,8 +150,8 @@ pub enum BuildingType {
 
 /// 建筑组件
 #[derive(Component)]
-pub struct Building {
-    #[allow(dead_code)]  // 保留用于未来建筑系统扩展
+#[allow(dead_code)]
+pub struct Building {  // 保留用于未来建筑系统扩展
     pub building_type: BuildingType,
     pub construction_progress: f32, // 0.0 到 1.0
 }
