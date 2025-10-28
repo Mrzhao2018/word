@@ -1,15 +1,17 @@
-use bevy::prelude::*;
 use bevy::log::LogPlugin;
+use bevy::prelude::*;
 
 mod components;
-mod systems;
-mod resources;
-mod world;
 mod pathfinding;
+mod resources;
+mod systems;
+mod world;
+mod world_map_data;
 
-use systems::*;
 use resources::*;
+use systems::*;
 use world::*;
+use world_map_data::*;
 
 fn main() {
     App::new()
@@ -38,7 +40,10 @@ fn main() {
         .init_resource::<SelectedDwarf>()
         .init_resource::<GlobalInventory>()
         .init_resource::<GameInitialized>()
-        .init_resource::<WorldSeed>()  // 世界生成种子
+    .init_resource::<WorldSeed>()  // 世界生成种子
+    .init_resource::<WorldAtlas>()
+    .init_resource::<AtlasSelection>()
+        .init_resource::<ActiveLocalMap>()
         // 启动系统（总是执行）
         .add_systems(Startup, setup_camera)
         // 进入主菜单时的系统
@@ -47,14 +52,26 @@ fn main() {
         .add_systems(OnExit(GameState::MainMenu), cleanup_main_menu)
         // 主菜单状态下的更新系统
         .add_systems(Update, menu_button_system.run_if(in_state(GameState::MainMenu)))
-        // 进入游戏时的系统（只在首次初始化时生成世界）
-        .add_systems(OnEnter(GameState::Playing), (
+        // 世界视图相关系统
+        .add_systems(OnEnter(GameState::WorldView), (
+            cleanup_local_map,
+            reset_game_initialized,
+            prepare_world_atlas,
+            setup_world_atlas_scene,
+        ).chain())
+        .add_systems(OnExit(GameState::WorldView), cleanup_world_atlas_scene)
+        .add_systems(Update, (
+            world_atlas_input_system,
+            world_atlas_selection_system,
+        ).run_if(in_state(GameState::WorldView)))
+        // 进入局部地图时的系统（只在首次初始化时生成）
+        .add_systems(OnEnter(GameState::LocalView), (
             setup_world,
             spawn_dwarves,
             setup_ui,
         ).chain().run_if(game_not_initialized))
-        // 标记游戏已初始化
-        .add_systems(OnEnter(GameState::Playing), mark_game_initialized)
+        // 标记局部地图已初始化
+        .add_systems(OnEnter(GameState::LocalView), mark_game_initialized)
         // 进入主菜单时的系统（从游戏返回主菜单时清理）
         .add_systems(OnEnter(GameState::MainMenu), cleanup_game_on_menu_return)
         // 进入暂停菜单时的系统
@@ -69,6 +86,7 @@ fn main() {
         // 游戏状态下的更新系统
         .add_systems(Update, (
             pause_game_system,  // ESC暂停检测
+            local_view_return_to_world_system,
             dwarf_work_system,    // 先决策
             dwarf_movement_system, // 后执行移动
             resource_gathering_system,
@@ -77,7 +95,7 @@ fn main() {
             time_control_system,
             ui_update_system,
             input_system,
-        ).run_if(in_state(GameState::Playing)))
+        ).run_if(in_state(GameState::LocalView)))
         .add_systems(Update, (
             update_work_indicators,
             mouse_selection_system,
@@ -86,7 +104,7 @@ fn main() {
             update_dwarf_panel,
             dwarf_name_hover_system,
             terrain_info_hover_system,  // 地形信息悬停
-        ).run_if(in_state(GameState::Playing)))
+        ).run_if(in_state(GameState::LocalView)))
         .add_systems(Update, (
             // 动画系统
             water_animation_system,
@@ -94,7 +112,7 @@ fn main() {
             daylight_cycle_system,
             spawn_particle_system,
             particle_system,
-        ).run_if(in_state(GameState::Playing)))
+        ).run_if(in_state(GameState::LocalView)))
         .run();
 }
 

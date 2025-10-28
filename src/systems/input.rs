@@ -1,7 +1,7 @@
-use bevy::prelude::*;
 use crate::components::*;
 use crate::resources::*;
 use crate::world::*;
+use bevy::prelude::*;
 
 /// 输入处理系统
 pub fn input_system(
@@ -9,13 +9,13 @@ pub fn input_system(
     mut camera_query: Query<&mut Transform, With<Camera2d>>,
 ) {
     use bevy::input::keyboard::KeyCode;
-    
+
     let Ok(mut camera_transform) = camera_query.single_mut() else {
         return;
     };
-    
+
     let speed = 5.0;
-        
+
     if keyboard.pressed(KeyCode::KeyW) || keyboard.pressed(KeyCode::ArrowUp) {
         camera_transform.translation.y += speed;
     }
@@ -45,28 +45,28 @@ pub fn mouse_selection_system(
     if !mouse_button.just_pressed(MouseButton::Left) {
         return;
     }
-    
+
     let Ok(window) = windows.single() else {
         return;
     };
-    
+
     let Some(cursor_position) = window.cursor_position() else {
         return;
     };
-    
+
     let Ok((camera, camera_transform)) = camera_query.single() else {
         return;
     };
-    
+
     // 将屏幕坐标转换为世界坐标
     let Ok(world_position) = camera.viewport_to_world_2d(camera_transform, cursor_position) else {
         return;
     };
-    
+
     // 查找最近的矮人
     let mut closest_dwarf: Option<Entity> = None;
     let mut closest_distance = f32::MAX;
-    
+
     for (entity, transform) in dwarves.iter() {
         let distance = world_position.distance(transform.translation.truncate());
         if distance < TILE_SIZE && distance < closest_distance {
@@ -74,19 +74,19 @@ pub fn mouse_selection_system(
             closest_dwarf = Some(entity);
         }
     }
-    
+
     // 更新选中状态
     selected.entity = closest_dwarf;
-    
+
     // 移除旧的面板
     for entity in existing_panel.iter() {
         commands.entity(entity).despawn();
     }
-    
+
     // 如果选中了矮人,创建新面板
     if closest_dwarf.is_some() {
         let font = asset_server.load("fonts/sarasa-gothic-sc-regular.ttf");
-        
+
         commands.spawn((
             Text::new("矮人信息"),
             TextFont {
@@ -116,7 +116,7 @@ pub fn update_selection_indicator(
 ) {
     for (entity, children) in dwarves.iter() {
         let is_selected = selected.entity == Some(entity);
-        
+
         for child in children.iter() {
             if let Ok(mut text_color) = indicators.get_mut(child) {
                 // 选中时显示黄色边框,未选中时透明
@@ -143,37 +143,37 @@ pub fn mouse_control_system(
     if !mouse_button.just_pressed(MouseButton::Right) {
         return;
     }
-    
+
     let Some(selected_entity) = selected.entity else {
         return;
     };
-    
+
     let Ok(window) = windows.single() else {
         return;
     };
-    
+
     let Some(cursor_position) = window.cursor_position() else {
         return;
     };
-    
+
     let Ok((camera, camera_transform)) = camera_query.single() else {
         return;
     };
-    
+
     // 将屏幕坐标转换为世界坐标
     let Ok(world_position) = camera.viewport_to_world_2d(camera_transform, cursor_position) else {
         return;
     };
-    
+
     // 转换为网格坐标
     let grid_x = ((world_position.x + (WORLD_WIDTH as f32 * TILE_SIZE / 2.0)) / TILE_SIZE) as i32;
     let grid_y = ((world_position.y + (WORLD_HEIGHT as f32 * TILE_SIZE / 2.0)) / TILE_SIZE) as i32;
-    
+
     // 边界检查
     if grid_x < 0 || grid_x >= WORLD_WIDTH || grid_y < 0 || grid_y >= WORLD_HEIGHT {
         return;
     }
-    
+
     // 检查目标地形是否可行走
     let mut is_walkable = false;
     for (terrain_pos, terrain) in terrain_query.iter() {
@@ -182,7 +182,7 @@ pub fn mouse_control_system(
             break;
         }
     }
-    
+
     // 只有当目标位置可行走时才分配任务
     if is_walkable {
         if let Ok(mut work_state) = dwarves.get_mut(selected_entity) {
@@ -207,33 +207,33 @@ pub fn dwarf_name_hover_system(
     for entity in existing_tags.iter() {
         commands.entity(entity).despawn();
     }
-    
+
     let Ok(window) = windows.single() else {
         return;
     };
-    
+
     let Some(cursor_position) = window.cursor_position() else {
         return;
     };
-    
+
     let Ok((camera, camera_transform)) = camera_query.single() else {
         return;
     };
-    
+
     // 将屏幕坐标转换为世界坐标
     let Ok(world_position) = camera.viewport_to_world_2d(camera_transform, cursor_position) else {
         return;
     };
-    
+
     // 加载字体
     let font = asset_server.load("fonts/sarasa-gothic-sc-regular.ttf");
-    
+
     // 检查鼠标附近的矮人（半径约50像素）
     const HOVER_RADIUS: f32 = 50.0;
-    
+
     for (_entity, transform, dwarf) in dwarves.iter() {
         let distance = world_position.distance(transform.translation.truncate());
-        
+
         if distance < HOVER_RADIUS {
             // 在矮人上方显示名字
             commands.spawn((
@@ -268,38 +268,38 @@ pub fn terrain_info_hover_system(
     for entity in existing_labels.iter() {
         commands.entity(entity).despawn();
     }
-    
+
     let Ok(window) = windows.single() else {
         return;
     };
-    
+
     let Some(cursor_position) = window.cursor_position() else {
         return;
     };
-    
+
     let Ok((camera, camera_transform)) = camera_query.single() else {
         return;
     };
-    
+
     // 将屏幕坐标转换为世界坐标
     let Ok(world_position) = camera.viewport_to_world_2d(camera_transform, cursor_position) else {
         return;
     };
-    
+
     // 转换为网格坐标
     let grid_x = ((world_position.x + (WORLD_WIDTH as f32 * TILE_SIZE / 2.0)) / TILE_SIZE) as i32;
     let grid_y = ((world_position.y + (WORLD_HEIGHT as f32 * TILE_SIZE / 2.0)) / TILE_SIZE) as i32;
-    
+
     // 边界检查
     if grid_x < 0 || grid_x >= WORLD_WIDTH || grid_y < 0 || grid_y >= WORLD_HEIGHT {
         return;
     }
-    
+
     // 查找对应位置的地形
     for (terrain_pos, terrain) in terrain_query.iter() {
         if terrain_pos.x == grid_x && terrain_pos.y == grid_y {
             let font = asset_server.load("fonts/sarasa-gothic-sc-regular.ttf");
-            
+
             // 构建地形信息文本
             let terrain_info = format!(
                 "{}\n资源产出: {:.0}%\n丰富度: {:.1}x\n移动速度: {:.0}%",
@@ -308,7 +308,7 @@ pub fn terrain_info_hover_system(
                 terrain.resource_richness,
                 terrain.terrain_type.movement_speed() * 100.0
             );
-            
+
             // 在鼠标位置附近显示信息
             commands.spawn((
                 Text::new(&terrain_info),
@@ -328,7 +328,7 @@ pub fn terrain_info_hover_system(
                 BackgroundColor(Color::srgba(0.1, 0.1, 0.15, 0.95)),
                 TerrainInfoLabel,
             ));
-            
+
             break;
         }
     }

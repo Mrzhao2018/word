@@ -38,12 +38,12 @@ pub struct Velocity {
 #[derive(Component)]
 pub struct WorkState {
     pub current_task: Option<Task>,
-    pub work_progress: f32, // 工作进度 0.0-1.0
+    pub work_progress: f32,           // 工作进度 0.0-1.0
     pub cached_path: Vec<(i32, i32)>, // 缓存的路径
-    pub path_index: usize,  // 当前路径点索引
-    pub path_recalc_timer: f32, // 路径重新计算计时器
-    pub task_cooldown: f32, // 任务冷却时间（防止频繁切换）
-    pub task_duration: f32, // 当前任务持续时间（防止卡住）
+    pub path_index: usize,            // 当前路径点索引
+    pub path_recalc_timer: f32,       // 路径重新计算计时器
+    pub task_cooldown: f32,           // 任务冷却时间（防止频繁切换）
+    pub task_duration: f32,           // 当前任务持续时间（防止卡住）
 }
 
 /// UI标记组件
@@ -98,7 +98,7 @@ pub struct BackToMenuButton;
 /// ASCII字符显示组件
 #[derive(Component)]
 pub struct AsciiChar {
-    #[allow(dead_code)]  // 保留用于未来可能的字符判断逻辑
+    #[allow(dead_code)] // 保留用于未来可能的字符判断逻辑
     pub character: char,
 }
 
@@ -132,7 +132,7 @@ pub struct GridLine;
 #[derive(Clone, Debug)]
 pub enum Task {
     Mining(GridPosition),
-    #[allow(dead_code)]  // 保留用于未来建筑系统
+    #[allow(dead_code)] // 保留用于未来建筑系统
     Building(GridPosition, BuildingType),
     Gathering(GridPosition),
     Idle,
@@ -140,7 +140,7 @@ pub enum Task {
 
 /// 建筑类型
 #[derive(Clone, Debug, PartialEq)]
-#[allow(dead_code)]  // 保留用于未来建筑系统扩展
+#[allow(dead_code)] // 保留用于未来建筑系统扩展
 pub enum BuildingType {
     Workshop,
     Stockpile,
@@ -151,7 +151,8 @@ pub enum BuildingType {
 /// 建筑组件
 #[derive(Component)]
 #[allow(dead_code)]
-pub struct Building {  // 保留用于未来建筑系统扩展
+pub struct Building {
+    // 保留用于未来建筑系统扩展
     pub building_type: BuildingType,
     pub construction_progress: f32, // 0.0 到 1.0
 }
@@ -170,25 +171,25 @@ impl TerrainType {
     /// 获取地形的资源产出倍率
     pub fn resource_multiplier(&self) -> f32 {
         match self {
-            TerrainType::Tree => 1.5,      // 森林采集效率高
-            TerrainType::Stone => 1.2,     // 石地挖矿效率较高
-            TerrainType::Mountain => 1.8,  // 山脉挖矿效率最高
-            TerrainType::Water => 0.8,     // 水边采集效率略低
-            TerrainType::Grass => 1.0,     // 草地标准效率
+            TerrainType::Tree => 1.5,     // 森林采集效率高
+            TerrainType::Stone => 1.2,    // 石地挖矿效率较高
+            TerrainType::Mountain => 1.8, // 山脉挖矿效率最高
+            TerrainType::Water => 0.8,    // 水边采集效率略低
+            TerrainType::Grass => 1.0,    // 草地标准效率
         }
     }
-    
+
     /// 获取地形的移动速度倍率
     pub fn movement_speed(&self) -> f32 {
         match self {
-            TerrainType::Grass => 1.0,     // 草地正常速度
-            TerrainType::Stone => 0.9,     // 石地略慢
-            TerrainType::Tree => 0.8,      // 森林较慢
-            TerrainType::Water => 0.0,     // 水域无法通行
-            TerrainType::Mountain => 0.0,  // 山脉无法通行
+            TerrainType::Grass => 1.0,    // 草地正常速度
+            TerrainType::Stone => 0.9,    // 石地略慢
+            TerrainType::Tree => 0.8,     // 森林较慢
+            TerrainType::Water => 0.0,    // 水域无法通行
+            TerrainType::Mountain => 0.0, // 山脉无法通行
         }
     }
-    
+
     /// 获取地形的描述
     pub fn description(&self) -> &'static str {
         match self {
@@ -206,5 +207,5 @@ impl TerrainType {
 pub struct Terrain {
     pub terrain_type: TerrainType,
     pub walkable: bool,
-    pub resource_richness: f32,  // 资源丰富度 0.5-1.5
+    pub resource_richness: f32, // 资源丰富度 0.5-1.5
 }

@@ -5,7 +5,8 @@ use bevy::prelude::*;
 pub enum GameState {
     #[default]
     MainMenu,
-    Playing,
+    WorldView,
+    LocalView,
     Paused,
 }
 
@@ -51,7 +52,7 @@ impl Default for GameTime {
 
 impl GameTime {
     /// 获取当前时间的光照强度 (0.0 = 黑夜, 1.0 = 白天)
-    #[allow(dead_code)]  // 保留用于未来更复杂的昼夜系统
+    #[allow(dead_code)] // 保留用于未来更复杂的昼夜系统
     pub fn get_daylight(&self) -> f32 {
         // 6点日出,18点日落
         if self.hour < 6 {
@@ -68,9 +69,9 @@ impl GameTime {
             0.6 // 夜晚 - 调亮了
         }
     }
-    
+
     /// 获取环境光颜色
-    #[allow(dead_code)]  // 保留用于未来更复杂的光照系统
+    #[allow(dead_code)] // 保留用于未来更复杂的光照系统
     pub fn get_ambient_color(&self) -> Color {
         let daylight = self.get_daylight();
         if self.hour >= 6 && self.hour < 8 {
@@ -113,4 +114,10 @@ impl Default for WorldSeed {
             seed: rand::random(),
         }
     }
+}
+
+/// 当前激活的局部地图（从大地图进入时设置）
+#[derive(Resource, Default)]
+pub struct ActiveLocalMap {
+    pub coord: Option<IVec2>,
 }

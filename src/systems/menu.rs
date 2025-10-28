@@ -1,14 +1,11 @@
-use bevy::prelude::*;
 use crate::components::*;
 use crate::resources::*;
+use bevy::prelude::*;
 
 /// 设置主菜单
-pub fn setup_main_menu(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-) {
+pub fn setup_main_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
     let font = asset_server.load("fonts/sarasa-gothic-sc-regular.ttf");
-    
+
     // 菜单根容器
     commands
         .spawn((
@@ -38,7 +35,7 @@ pub fn setup_main_menu(
                     ..default()
                 },
             ));
-            
+
             // 副标题
             parent.spawn((
                 Text::new("Dwarf Fortress Style Game"),
@@ -53,7 +50,7 @@ pub fn setup_main_menu(
                     ..default()
                 },
             ));
-            
+
             // 开始游戏按钮
             parent
                 .spawn((
@@ -80,7 +77,7 @@ pub fn setup_main_menu(
                         TextColor(Color::srgb(1.0, 1.0, 1.0)),
                     ));
                 });
-            
+
             // 游戏说明
             parent.spawn((
                 Text::new("操作提示:\n\n• WASD/方向键: 移动视角\n• 鼠标左键: 选择矮人\n• 鼠标右键: 指挥矮人移动\n• 空格: 暂停/继续\n• 数字键1-5: 调节时间速度"),
@@ -109,10 +106,7 @@ pub fn mark_game_initialized(mut game_initialized: ResMut<GameInitialized>) {
 }
 
 /// 清理主菜单
-pub fn cleanup_main_menu(
-    mut commands: Commands,
-    menu_query: Query<Entity, With<MainMenuUI>>,
-) {
+pub fn cleanup_main_menu(mut commands: Commands, menu_query: Query<Entity, With<MainMenuUI>>) {
     // 删除所有菜单UI实体（子实体会自动删除）
     for entity in menu_query.iter() {
         if let Ok(mut entity_cmd) = commands.get_entity(entity) {
@@ -134,7 +128,7 @@ pub fn menu_button_system(
             Interaction::Pressed => {
                 // 点击开始游戏
                 *color = BackgroundColor(Color::srgb(0.2, 0.5, 0.3));
-                next_state.set(GameState::Playing);
+                next_state.set(GameState::WorldView);
             }
             Interaction::Hovered => {
                 // 鼠标悬停
@@ -155,16 +149,16 @@ pub fn pause_game_system(
     mut next_state: ResMut<NextState<GameState>>,
 ) {
     use bevy::input::keyboard::KeyCode;
-    
+
     if keyboard.just_pressed(KeyCode::Escape) {
         match current_state.get() {
-            GameState::Playing => {
+            GameState::LocalView => {
                 // 游戏中按ESC暂停
                 next_state.set(GameState::Paused);
             }
             GameState::Paused => {
                 // 暂停中按ESC继续
-                next_state.set(GameState::Playing);
+                next_state.set(GameState::LocalView);
             }
             _ => {}
         }
@@ -172,12 +166,9 @@ pub fn pause_game_system(
 }
 
 /// 设置暂停菜单
-pub fn setup_pause_menu(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-) {
+pub fn setup_pause_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
     let font = asset_server.load("fonts/sarasa-gothic-sc-regular.ttf");
-    
+
     // 半透明背景遮罩
     commands
         .spawn((
@@ -207,7 +198,7 @@ pub fn setup_pause_menu(
                     ..default()
                 },
             ));
-            
+
             // 继续游戏按钮
             parent
                 .spawn((
@@ -234,7 +225,7 @@ pub fn setup_pause_menu(
                         TextColor(Color::srgb(1.0, 1.0, 1.0)),
                     ));
                 });
-            
+
             // 返回主菜单按钮
             parent
                 .spawn((
@@ -261,7 +252,7 @@ pub fn setup_pause_menu(
                         TextColor(Color::srgb(1.0, 1.0, 1.0)),
                     ));
                 });
-            
+
             // 操作提示
             parent.spawn((
                 Text::new("\n按 ESC 继续游戏"),
@@ -280,10 +271,7 @@ pub fn setup_pause_menu(
 }
 
 /// 清理暂停菜单
-pub fn cleanup_pause_menu(
-    mut commands: Commands,
-    menu_query: Query<Entity, With<PauseMenuUI>>,
-) {
+pub fn cleanup_pause_menu(mut commands: Commands, menu_query: Query<Entity, With<PauseMenuUI>>) {
     // 删除所有暂停菜单UI实体（子实体会自动删除）
     for entity in menu_query.iter() {
         if let Ok(mut entity_cmd) = commands.get_entity(entity) {
@@ -300,7 +288,11 @@ pub fn pause_menu_button_system(
     >,
     mut back_query: Query<
         (&Interaction, &mut BackgroundColor),
-        (Changed<Interaction>, With<BackToMenuButton>, Without<ResumeButton>),
+        (
+            Changed<Interaction>,
+            With<BackToMenuButton>,
+            Without<ResumeButton>,
+        ),
     >,
     mut next_state: ResMut<NextState<GameState>>,
 ) {
@@ -309,7 +301,7 @@ pub fn pause_menu_button_system(
         match *interaction {
             Interaction::Pressed => {
                 *color = BackgroundColor(Color::srgb(0.1, 0.4, 0.2));
-                next_state.set(GameState::Playing);
+                next_state.set(GameState::LocalView);
             }
             Interaction::Hovered => {
                 *color = BackgroundColor(Color::srgb(0.3, 0.6, 0.4));
@@ -319,7 +311,7 @@ pub fn pause_menu_button_system(
             }
         }
     }
-    
+
     // 返回主菜单按钮
     for (interaction, mut color) in back_query.iter_mut() {
         match *interaction {
