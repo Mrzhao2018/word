@@ -1,8 +1,10 @@
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
+use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 
 mod components;
 mod debug_config;
+mod logger;
 mod pathfinding;
 mod resources;
 mod systems;
@@ -34,6 +36,8 @@ fn main() {
                 ..default()
             })
         )
+        // 诊断插件（用于FPS等性能监控）
+        .add_plugins(FrameTimeDiagnosticsPlugin::default())
         // 状态管理
         .init_state::<GameState>()
         // 资源
@@ -46,6 +50,7 @@ fn main() {
     .init_resource::<AtlasSelection>()
         .init_resource::<ActiveLocalMap>()
         .init_resource::<GeneratedMapsRegistry>()  // 已生成地图注册表
+        .init_resource::<logger::GameLogger>()  // 游戏日志系统
         // 启动系统（总是执行）
         .add_systems(Startup, (setup_camera, init_world_atlas))
         // 进入主菜单时的系统
@@ -75,7 +80,10 @@ fn main() {
             setup_world,
             spawn_dwarves,
             setup_ui,
-            mark_game_initialized,  // 放在链的最后，确保在地图生成后才标记
+            setup_minimap,
+            setup_debug_panel,
+            setup_notification_panel,
+            mark_game_initialized,  // 放在链的最后,确保在地图生成后才标记
         ).chain().run_if(game_not_initialized))
         // 进入局部地图时的模拟系统（只在重新进入已有地图时运行）
         .add_systems(OnEnter(GameState::LocalView), 
@@ -106,8 +114,19 @@ fn main() {
             building_system,
             time_system,
             time_control_system,
+        ).run_if(in_state(GameState::LocalView)))
+        .add_systems(Update, (
             ui_update_system,
             input_system,
+            camera_zoom_system,  // 相机缩放
+            update_minimap_viewport,  // 小地图视口更新
+            update_minimap_text,  // 小地图文本更新
+            update_minimap_dwarves,  // 小地图矮人标记更新
+            update_debug_panel,  // 调试面板更新
+            toggle_debug_panel,  // F3切换调试面板
+            update_notification_panel,  // 通知面板更新
+            toggle_notification_panel,  // F4切换通知面板
+            debug_control_system,  // F2切换调试, F5清除日志
         ).run_if(in_state(GameState::LocalView)))
         .add_systems(Update, (
             update_work_indicators,

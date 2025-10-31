@@ -28,6 +28,42 @@ pub fn input_system(
     if keyboard.pressed(KeyCode::KeyD) || keyboard.pressed(KeyCode::ArrowRight) {
         camera_transform.translation.x += speed;
     }
+
+    // 限制相机移动范围（基于地图大小）
+    let half_world_width = (WORLD_WIDTH as f32 * TILE_SIZE) / 2.0;
+    let half_world_height = (WORLD_HEIGHT as f32 * TILE_SIZE) / 2.0;
+    
+    // 添加边界缓冲区，防止相机移出地图太远
+    let margin = 200.0;
+    camera_transform.translation.x = camera_transform.translation.x
+        .clamp(-half_world_width - margin, half_world_width + margin);
+    camera_transform.translation.y = camera_transform.translation.y
+        .clamp(-half_world_height - margin, half_world_height + margin);
+}
+
+/// 相机缩放系统
+pub fn camera_zoom_system(
+    mut scroll_events: MessageReader<bevy::input::mouse::MouseWheel>,
+    mut camera_query: Query<&mut Transform, With<Camera2d>>,
+) {
+    use bevy::input::mouse::MouseScrollUnit;
+    
+    let Ok(mut camera_transform) = camera_query.single_mut() else {
+        return;
+    };
+
+    for event in scroll_events.read() {
+        // 计算缩放增量
+        let zoom_delta = match event.unit {
+            MouseScrollUnit::Line => event.y * 0.1,  // 每行滚动缩放10%
+            MouseScrollUnit::Pixel => event.y * 0.002, // 像素模式缩放更细腻
+        };
+
+        // 更新缩放比例（scale值越小，画面越大）
+        // 限制缩放范围：0.3x (放大3.3倍) 到 2.5x (缩小到40%)
+        let new_scale = (camera_transform.scale.x - zoom_delta).clamp(0.3, 2.5);
+        camera_transform.scale = Vec3::splat(new_scale);
+    }
 }
 
 /// 鼠标选择矮人系统
@@ -37,9 +73,6 @@ pub fn mouse_selection_system(
     camera_query: Query<(&Camera, &GlobalTransform)>,
     dwarves: Query<(Entity, &Transform), With<Dwarf>>,
     mut selected: ResMut<SelectedDwarf>,
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    existing_panel: Query<Entity, With<DwarfPanel>>,
 ) {
     // 只在左键点击时处理
     if !mouse_button.just_pressed(MouseButton::Left) {
@@ -75,37 +108,8 @@ pub fn mouse_selection_system(
         }
     }
 
-    // 更新选中状态
+    // 更新选中状态（矮人详情面板会在 update_dwarf_panel 系统中自动显示/隐藏）
     selected.entity = closest_dwarf;
-
-    // 移除旧的面板
-    for entity in existing_panel.iter() {
-        commands.entity(entity).despawn();
-    }
-
-    // 如果选中了矮人,创建新面板
-    if closest_dwarf.is_some() {
-        let font = asset_server.load("fonts/sarasa-gothic-sc-regular.ttf");
-
-        commands.spawn((
-            Text::new("矮人信息"),
-            TextFont {
-                font: font.clone(),
-                font_size: 18.0,
-                ..default()
-            },
-            TextColor(Color::srgb(1.0, 0.9, 0.6)),
-            Node {
-                position_type: PositionType::Absolute,
-                top: Val::Px(100.0),
-                left: Val::Px(15.0),
-                padding: UiRect::all(Val::Px(10.0)),
-                ..default()
-            },
-            BackgroundColor(Color::srgba(0.1, 0.1, 0.2, 0.9)),
-            DwarfPanel,
-        ));
-    }
 }
 
 /// 更新选择指示器

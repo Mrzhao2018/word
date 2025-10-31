@@ -41,3 +41,15 @@ pub use world_map_view::*;
 // 全局模拟系统
 mod global_simulation;
 pub use global_simulation::*;
+
+// 小地图系统
+mod minimap;
+pub use minimap::*;
+
+// 调试面板系统
+mod debug_panel;
+pub use debug_panel::*;
+
+// 通知消息系统
+mod notification;
+pub use notification::*;

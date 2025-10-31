@@ -12,6 +12,7 @@ use crate::{debug_world_input, debug_world_selection};
 pub fn init_world_atlas(
     mut commands: Commands,
     world_seed: Res<WorldSeed>,
+    mut logger: ResMut<crate::logger::GameLogger>,
 ) {
     let atlas = WorldAtlas::generate(
         world_seed.seed as u64,
@@ -19,7 +20,7 @@ pub fn init_world_atlas(
         WORLD_ATLAS_DEFAULT_HEIGHT,
     );
     commands.insert_resource(atlas);
-    info!("初始化世界地图，种子: {}", world_seed.seed);
+    logger.info(format!("初始化世界地图，种子: {}", world_seed.seed));
 }
 
 /// 世界地图场景根节点

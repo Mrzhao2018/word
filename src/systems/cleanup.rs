@@ -51,6 +51,7 @@ pub fn save_dwarves_state(
     mut map_registry: ResMut<GeneratedMapsRegistry>,
     active_local: Res<ActiveLocalMap>,
     game_time: Res<GameTime>,
+    mut logger: ResMut<crate::logger::GameLogger>,
 ) {
     if let Some(coord) = active_local.coord {
         let mut stored_dwarves = Vec::new();
@@ -69,9 +70,9 @@ pub fn save_dwarves_state(
             });
         }
         if !stored_dwarves.is_empty() {
+            let count = stored_dwarves.len();
             map_registry.dwarves.insert(coord, stored_dwarves);
-            info!("保存了 {} 个矮人的状态到地块 {:?} (Day {}, Hour {})", 
-                map_registry.dwarves.get(&coord).unwrap().len(), coord, game_time.day, game_time.hour);
+            logger.info(format!("保存 {} 个矮人到地块 {:?}", count, coord));
         }
     }
 }
@@ -163,6 +164,7 @@ pub fn cleanup_world_data(
     mut game_time: ResMut<GameTime>,
     mut inventory: ResMut<GlobalInventory>,
     world_atlas: Option<ResMut<WorldAtlas>>,
+    mut logger: ResMut<crate::logger::GameLogger>,
 ) {
     // 清理地图数据
     map_registry.maps.clear();
@@ -180,7 +182,7 @@ pub fn cleanup_world_data(
             WORLD_ATLAS_DEFAULT_WIDTH,
             WORLD_ATLAS_DEFAULT_HEIGHT,
         );
-        info!("重新生成世界地图，种子: {}", world_seed.seed);
+        logger.info(format!("重新生成世界地图，种子: {}", world_seed.seed));
     } else {
         // 如果 WorldAtlas 还不存在，创建它
         let atlas = WorldAtlas::generate(
@@ -189,7 +191,7 @@ pub fn cleanup_world_data(
             WORLD_ATLAS_DEFAULT_HEIGHT,
         );
         commands.insert_resource(atlas);
-        info!("首次创建世界地图，种子: {}", world_seed.seed);
+        logger.info(format!("首次创建世界地图，种子: {}", world_seed.seed));
     }
     
     // 重置游戏时间
@@ -204,7 +206,7 @@ pub fn cleanup_world_data(
     inventory.food = 100;
     inventory.metal = 10;
     
-    info!("清理世界线数据，准备新游戏（时间和资源已重置）");
+    logger.info("返回主菜单，游戏数据已重置".to_string());
 }
 
 /// 将游戏初始化标记重置为未初始化

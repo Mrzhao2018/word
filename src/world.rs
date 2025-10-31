@@ -6,8 +6,8 @@ use noise::{NoiseFn, Perlin};
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 
 /// 世界大小常量
-pub const WORLD_WIDTH: i32 = 50;
-pub const WORLD_HEIGHT: i32 = 30;
+pub const WORLD_WIDTH: i32 = 80;  // 从50增加到80
+pub const WORLD_HEIGHT: i32 = 50; // 从30增加到50
 pub const TILE_SIZE: f32 = 32.0;
 
 /// 游戏世界资源
@@ -336,6 +336,7 @@ pub fn setup_world(
     active_local: Res<ActiveLocalMap>,
     world_atlas: Res<WorldAtlas>,
     mut map_registry: ResMut<GeneratedMapsRegistry>,
+    mut logger: ResMut<crate::logger::GameLogger>,
 ) {
     let font = asset_server.load("fonts/sarasa-gothic-sc-regular.ttf");
     
@@ -343,7 +344,7 @@ pub fn setup_world(
     let current_coord = match active_local.coord {
         Some(coord) => coord,
         None => {
-            warn!("尝试生成地图但没有选中地块！");
+            logger.warning("尝试生成地图但没有选中地块！".to_string());
             return;
         }
     };
@@ -351,13 +352,13 @@ pub fn setup_world(
     // 检查该地块是否已经生成过
     if let Some(stored_map) = map_registry.maps.get(&current_coord) {
         // 地图已存在，从存储中恢复
-        info!("恢复已生成的地图: {:?}", current_coord);
+        logger.info(format!("恢复已生成的地图: {:?}", current_coord));
         restore_map_from_storage(&mut commands, &font, stored_map, current_coord);
         return;
     }
     
     // 地图不存在，生成新地图
-    info!("生成新地图: {:?}", current_coord);
+    logger.info(format!("生成新地图: {:?}", current_coord));
     
     let mut rng = SmallRng::seed_from_u64(world_seed.seed as u64 + 
         (current_coord.x as u64 * 1000 + current_coord.y as u64)); // 每个地块有不同的种子偏移
@@ -525,7 +526,7 @@ pub fn setup_world(
     // 如果这是第一个生成的地图，设置为出生点
     if map_registry.spawn_location.is_none() {
         map_registry.spawn_location = Some(current_coord);
-        info!("设置出生点: {:?}", current_coord);
+        logger.info(format!("设置出生点: {:?}", current_coord));
     }
 }
 
@@ -631,6 +632,7 @@ pub fn spawn_dwarves(
     terrain_query: Query<(&GridPosition, &Terrain)>,
     mut map_registry: ResMut<GeneratedMapsRegistry>,
     active_local: Res<ActiveLocalMap>,
+    mut logger: ResMut<crate::logger::GameLogger>,
 ) {
     // 获取当前地块坐标
     let current_coord = match active_local.coord {
@@ -641,7 +643,7 @@ pub fn spawn_dwarves(
     // 检查是否有保存的矮人数据
     if let Some(stored_dwarves) = map_registry.dwarves.get(&current_coord) {
         // 恢复保存的矮人
-        info!("恢复 {} 个矮人到地块 {:?}", stored_dwarves.len(), current_coord);
+        logger.info(format!("恢复 {} 个矮人到地块 {:?}", stored_dwarves.len(), current_coord));
         let font = asset_server.load("fonts/sarasa-gothic-sc-regular.ttf");
         
         for stored in stored_dwarves.clone() {
@@ -662,11 +664,11 @@ pub fn spawn_dwarves(
     
     // 只在出生点生成矮人
     if current_coord != spawn_coord {
-        info!("当前地块 {:?} 不是出生点 {:?}，不生成矮人", current_coord, spawn_coord);
+        logger.info(format!("当前地块 {:?} 不是出生点，不生成矮人", current_coord));
         return;
     }
     
-    info!("在出生点 {:?} 生成矮人", spawn_coord);
+    logger.info(format!("在出生点 {:?} 生成 {} 个矮人", spawn_coord, 7));
     
     // 标记矮人已生成
     map_registry.dwarves_spawned = true;
@@ -765,7 +767,7 @@ pub fn spawn_dwarves(
 
         // 最终后备：全局搜索第一个可行走位置
         if !found_safe_spot {
-            warn!("矮人 {} 无法在中心附近找到位置，使用全局搜索", name);
+            logger.warning(format!("矮人 {} 无法在中心附近找到位置，使用全局搜索", name));
             'global: for search_x in 0..WORLD_WIDTH {
                 for search_y in 0..WORLD_HEIGHT {
                     for (terrain_pos, terrain) in terrain_query.iter() {
@@ -784,7 +786,7 @@ pub fn spawn_dwarves(
         }
 
         if !found_safe_spot {
-            error!("矮人 {} 无法找到任何可行走位置！跳过生成。", name);
+            logger.error(format!("矮人 {} 无法找到任何可行走位置！跳过生成", name));
             continue;
         }
 

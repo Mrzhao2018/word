@@ -67,6 +67,14 @@ pub struct WorkIndicator;
 #[derive(Component)]
 pub struct SelectionIndicator;
 
+/// 小地图视口指示器
+#[derive(Component)]
+pub struct MinimapViewport;
+
+/// 小地图矮人标记
+#[derive(Component)]
+pub struct MinimapDwarfMarker;
+
 /// 鼠标悬停名字标签
 #[derive(Component)]
 pub struct DwarfNameTag;

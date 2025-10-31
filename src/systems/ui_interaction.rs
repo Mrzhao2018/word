@@ -13,15 +13,11 @@ pub fn ui_hotkey_system(
         toggle_panel_visibility(&mut panel_query, "help_info");
     }
     
-    // F2: 切换资源面板（预留）
-    if keyboard.just_pressed(KeyCode::F2) {
-        toggle_panel_visibility(&mut panel_query, "resource_stats");
-    }
+    // F2: 已被日志系统占用（切换调试模式）
+    // 资源面板功能已取消
     
-    // F3: 切换小地图（预留）
-    if keyboard.just_pressed(KeyCode::F3) {
-        // 未来功能
-    }
+    // F3: 已被调试面板占用
+    // 未来功能已取消
     
     // Tab: 切换所有面板显示/隐藏
     if keyboard.just_pressed(KeyCode::Tab) {

@@ -9,6 +9,7 @@ pub fn simulate_offscreen_dwarves(
     mut inventory: ResMut<GlobalInventory>,
     game_time: Res<GameTime>,
     active_local: Res<ActiveLocalMap>,
+    mut logger: ResMut<crate::logger::GameLogger>,
 ) {
     let current_coord = match active_local.coord {
         Some(coord) => coord,
@@ -62,15 +63,14 @@ pub fn simulate_offscreen_dwarves(
         inventory.food += total_resources_gathered.2;
         inventory.metal += total_resources_gathered.3;
         
-        info!(
-            "地块 {:?} 的矮人在最多 {} 小时内采集了: 木材+{}, 石头+{}, 食物+{}, 金属+{}",
+        logger.info(format!(
+            "地块 {:?} 离线采集: 木材+{}, 石头+{}, 食物+{}, 金属+{}",
             current_coord,
-            max_hours_passed,
             total_resources_gathered.0,
             total_resources_gathered.1,
             total_resources_gathered.2,
             total_resources_gathered.3
-        );
+        ));
     }
 }
 
@@ -135,6 +135,7 @@ pub fn simulate_all_offscreen_dwarves(
     mut map_registry: ResMut<GeneratedMapsRegistry>,
     mut inventory: ResMut<GlobalInventory>,
     game_time: Res<GameTime>,
+    mut logger: ResMut<crate::logger::GameLogger>,
 ) {
     let current_day = game_time.day;
     let current_hour = game_time.hour;
@@ -181,10 +182,10 @@ pub fn simulate_all_offscreen_dwarves(
             total_metal += tile_resources.3;
             tiles_processed += 1;
             
-            info!(
+            logger.debug(format!(
                 "地块 {:?} 后台生产: 木材+{}, 石头+{}, 食物+{}, 金属+{}",
                 coord, tile_resources.0, tile_resources.1, tile_resources.2, tile_resources.3
-            );
+            ));
         }
     }
     
@@ -195,9 +196,9 @@ pub fn simulate_all_offscreen_dwarves(
         inventory.food += total_food;
         inventory.metal += total_metal;
         
-        info!(
-            "全局模拟完成: {} 个地块后台运行，总计采集 木材:{}, 石头:{}, 食物:{}, 金属:{}",
+        logger.info(format!(
+            "全局模拟: {} 个地块后台运行，采集 木材:{}, 石头:{}, 食物:{}, 金属:{}",
             tiles_processed, total_wood, total_stone, total_food, total_metal
-        );
+        ));
     }
 }

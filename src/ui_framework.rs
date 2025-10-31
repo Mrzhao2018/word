@@ -178,6 +178,10 @@ pub struct BuildingMenuPanel;
 #[derive(Component)]
 pub struct NotificationPanel;
 
+/// 调试信息面板
+#[derive(Component)]
+pub struct DebugPanel;
+
 // ============ UI构建器 ============
 
 /// UI面板构建器 - 提供流式API构建面板
@@ -203,6 +207,27 @@ impl<'a> PanelBuilder<'a> {
         config: PanelConfig,
         marker: impl Component,
     ) -> Entity {
+        self.create_panel_with_state(id, config, marker, PanelState::Visible)
+    }
+
+    /// 创建初始隐藏的面板容器
+    pub fn create_hidden_panel(
+        &mut self,
+        id: &str,
+        config: PanelConfig,
+        marker: impl Component,
+    ) -> Entity {
+        self.create_panel_with_state(id, config, marker, PanelState::Hidden)
+    }
+
+    /// 创建面板容器（指定初始状态）
+    fn create_panel_with_state(
+        &mut self,
+        id: &str,
+        config: PanelConfig,
+        marker: impl Component,
+        initial_state: PanelState,
+    ) -> Entity {
         let (left, top) = config.anchor.to_position(config.offset);
         let (right, bottom) = if matches!(config.anchor, PanelAnchor::TopRight | PanelAnchor::MiddleRight | PanelAnchor::BottomRight) {
             (Val::Px(config.offset.x), Val::Auto)
@@ -210,6 +235,12 @@ impl<'a> PanelBuilder<'a> {
             (Val::Auto, Val::Px(config.offset.y))
         } else {
             (Val::Auto, Val::Auto)
+        };
+
+        let display = if initial_state == PanelState::Hidden {
+            Display::None
+        } else {
+            Display::Flex
         };
 
         self.commands
@@ -224,12 +255,13 @@ impl<'a> PanelBuilder<'a> {
                     min_width: Val::Px(config.min_width),
                     min_height: Val::Px(config.min_height),
                     flex_direction: FlexDirection::Column,
+                    display,
                     ..default()
                 },
                 BackgroundColor(config.background_color),
                 UIPanel {
                     id: id.to_string(),
-                    state: PanelState::Visible,
+                    state: initial_state,
                     config: config.clone(),
                 },
                 marker,

@@ -3,7 +3,7 @@
 /// 通过修改这个文件中的常量来控制各种调试输出
 
 /// 主调试开关 - 设为 false 可以关闭所有调试输出
-pub const DEBUG_ENABLED: bool = false;
+pub const DEBUG_ENABLED: bool = true;
 
 /// 世界地图交互调试
 pub const DEBUG_WORLD_MAP_INPUT: bool = false;

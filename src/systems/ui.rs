@@ -64,8 +64,30 @@ pub fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     let help_panel = builder.create_panel("help_info", help_config, HelpPanel);
     builder.add_text(
         help_panel,
-        "操作说明:\nWASD/方向键: 移动视角\n鼠标左键: 选择矮人\n鼠标右键: 指挥矮人移动\nM: 返回世界地图\n黄色边框 = 选中的矮人\n\n时间控制:\n空格: 暂停/继续\n1: 暂停 | 2: 半速 | 3: 正常\n4: 2倍速 | 5: 5倍速\n\nF1: 切换帮助显示",
+        "操作说明:\nWASD/方向键: 移动视角\n鼠标滚轮: 缩放视角\n鼠标左键: 选择矮人\n鼠标右键: 指挥矮人移动\nM: 返回世界地图\n黄色边框 = 选中的矮人\n\n时间控制:\n空格: 暂停/继续\n1: 暂停 | 2: 半速 | 3: 正常\n4: 2倍速 | 5: 5倍速\n\nF1: 切换帮助显示\nF2: 切换调试模式 | F4: 消息面板 | F5: 清除日志\nF3: 切换调试面板",
         HelpDisplay,
+    );
+
+    // 4. 矮人详情面板（左下角，初始隐藏）
+    let dwarf_detail_config = PanelConfig {
+        anchor: PanelAnchor::BottomLeft,
+        offset: Vec2::new(15.0, 15.0),
+        min_width: 320.0,
+        min_height: 280.0,
+        background_color: Color::srgba(0.08, 0.08, 0.15, 0.92),
+        border_color: Some(Color::srgba(0.8, 0.7, 0.3, 0.8)),
+        padding: theme.padding_large,
+    };
+    let dwarf_detail_panel = builder.create_hidden_panel(
+        "dwarf_detail",
+        dwarf_detail_config,
+        DwarfDetailPanel,
+    );
+    builder.add_title(dwarf_detail_panel, "◆ 矮人详情 ◆");
+    builder.add_text(
+        dwarf_detail_panel,
+        "选择一个矮人查看详情",
+        DwarfPanel,
     );
 }
 
@@ -122,39 +144,118 @@ pub fn ui_update_system(
     }
 }
 
-/// 更新矮人面板信息
+/// 更新矮人详情面板
 pub fn update_dwarf_panel(
     selected: Res<SelectedDwarf>,
     dwarves: Query<(&Dwarf, &WorkState, &GridPosition)>,
-    mut panel_query: Query<&mut Text, With<DwarfPanel>>,
+    mut text_query: Query<&mut Text, With<DwarfPanel>>,
+    mut panel_query: Query<(&mut UIPanel, &mut Node), With<DwarfDetailPanel>>,
 ) {
+    // 如果没有选中矮人，隐藏面板
     let Some(selected_entity) = selected.entity else {
+        for (mut panel, mut node) in panel_query.iter_mut() {
+            if panel.state != PanelState::Hidden {
+                node.display = Display::None;
+                panel.state = PanelState::Hidden;
+            }
+        }
         return;
     };
 
+    // 如果无法获取矮人数据，隐藏面板
     let Ok((dwarf, work_state, pos)) = dwarves.get(selected_entity) else {
+        for (mut panel, mut node) in panel_query.iter_mut() {
+            if panel.state != PanelState::Hidden {
+                node.display = Display::None;
+                panel.state = PanelState::Hidden;
+            }
+        }
         return;
     };
 
-    for mut text in panel_query.iter_mut() {
-        let task_text = match &work_state.current_task {
-            Some(Task::Idle) => "空闲".to_string(),
-            Some(Task::Wandering(_)) => "闲逛".to_string(),
+    // 显示面板
+    for (mut panel, mut node) in panel_query.iter_mut() {
+        if panel.state == PanelState::Hidden {
+            node.display = Display::Flex;
+            panel.state = PanelState::Visible;
+        }
+    }
+
+    // 更新面板内容
+    for mut text in text_query.iter_mut() {
+        // 构建任务信息
+        let (task_name, task_detail) = match &work_state.current_task {
+            Some(Task::Idle) => ("空闲", "正在休息".to_string()),
+            Some(Task::Wandering(target)) => (
+                "闲逛",
+                format!("目标位置: ({}, {})", target.x, target.y),
+            ),
             Some(Task::Gathering(target)) => {
                 let progress = (work_state.work_progress * 100.0) as i32;
-                format!("采集 -> ({}, {}) [{}%]", target.x, target.y, progress)
+                (
+                    "采集资源",
+                    format!("位置: ({}, {})\n进度: {}%", target.x, target.y, progress),
+                )
             }
             Some(Task::Mining(target)) => {
                 let progress = (work_state.work_progress * 100.0) as i32;
-                format!("挖矿 -> ({}, {}) [{}%]", target.x, target.y, progress)
+                (
+                    "挖矿采石",
+                    format!("位置: ({}, {})\n进度: {}%", target.x, target.y, progress),
+                )
             }
-            Some(Task::Building(target, _)) => format!("建造 -> ({}, {})", target.x, target.y),
-            None => "无任务".to_string(),
+            Some(Task::Building(target, building_type)) => (
+                "建造建筑",
+                format!(
+                    "位置: ({}, {})\n类型: {:?}",
+                    target.x, target.y, building_type
+                ),
+            ),
+            None => ("无任务", "等待指令".to_string()),
+        };
+
+        // 计算健康状态
+        let health_status = if dwarf.health >= 80.0 {
+            "健康"
+        } else if dwarf.health >= 50.0 {
+            "受伤"
+        } else {
+            "危险"
+        };
+
+        // 计算饥饿状态
+        let hunger_status = if dwarf.hunger < 30.0 {
+            "饱腹"
+        } else if dwarf.hunger < 70.0 {
+            "正常"
+        } else {
+            "饥饿"
+        };
+
+        // 计算快乐状态
+        let happiness_status = if dwarf.happiness >= 75.0 {
+            "愉快"
+        } else if dwarf.happiness >= 50.0 {
+            "一般"
+        } else if dwarf.happiness >= 25.0 {
+            "沮丧"
+        } else {
+            "痛苦"
         };
 
         **text = format!(
-            "◆ {} ◆\n\n位置: ({}, {})\n健康: {:.0}%\n饥饿: {:.0}%\n快乐: {:.0}%\n\n当前任务:\n{}",
-            dwarf.name, pos.x, pos.y, dwarf.health, dwarf.hunger, dwarf.happiness, task_text,
+            "姓名: {}\n位置: ({}, {})\n\n━━━ 状态 ━━━\n健康: {:.0}% ({})\n饥饿: {:.0}% ({})\n快乐: {:.0}% ({})\n\n━━━ 任务 ━━━\n{}\n{}",
+            dwarf.name,
+            pos.x,
+            pos.y,
+            dwarf.health,
+            health_status,
+            dwarf.hunger,
+            hunger_status,
+            dwarf.happiness,
+            happiness_status,
+            task_name,
+            task_detail,
         );
     }
 }
