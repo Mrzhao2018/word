@@ -2,9 +2,11 @@ use bevy::log::LogPlugin;
 use bevy::prelude::*;
 
 mod components;
+mod debug_config;
 mod pathfinding;
 mod resources;
 mod systems;
+mod ui_framework;
 mod world;
 mod world_map_data;
 
@@ -87,6 +89,7 @@ fn main() {
         .add_systems(Update, (
             pause_game_system,  // ESC暂停检测
             local_view_return_to_world_system,
+            ui_hotkey_system,  // UI快捷键系统
             dwarf_work_system,    // 先决策
             dwarf_movement_system, // 后执行移动
             resource_gathering_system,

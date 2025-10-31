@@ -2,10 +2,11 @@ use crate::components::*;
 use crate::pathfinding::{find_path, simplify_path};
 use crate::resources::*;
 use crate::world::*;
+use crate::debug_entity;
 use bevy::prelude::*;
 use rand::Rng;
 
-/// 矮人工作系统 - 完全重写版，使用A*寻路算法
+/// 矮人工作系统 - 优化版，智能目标选择和持续工作
 pub fn dwarf_work_system(
     time: Res<Time>,
     mut query: Query<(&mut WorkState, &GridPosition, &mut Velocity, &Dwarf)>,
@@ -26,54 +27,232 @@ pub fn dwarf_work_system(
 
         match &work_state.current_task {
             Some(Task::Idle) => {
-                // 空闲状态：随机分配新任务（增加概率，添加冷却）
-                if work_state.task_cooldown <= 0.0 && rng.gen_ratio(1, 30) {
-                    let target_x = rng.gen_range(0..WORLD_WIDTH);
-                    let target_y = rng.gen_range(0..WORLD_HEIGHT);
-
-                    // 检查目标是否可行走
-                    let mut is_walkable = false;
-                    for (terrain_pos, terrain) in terrain_query.iter() {
-                        if terrain_pos.x == target_x && terrain_pos.y == target_y {
-                            is_walkable = terrain.walkable;
-                            break;
+                // 空闲状态：30%概率寻找工作，70%概率闲逛
+                if work_state.task_cooldown <= 0.0 {
+                    let should_work = rng.gen_ratio(3, 10); // 30%概率工作
+                    let mut candidates: Vec<(GridPosition, TerrainType, f32)> = Vec::new();
+                    
+                    if should_work {
+                        // 寻找工作目标
+                        
+                        for (terrain_pos, terrain) in terrain_query.iter() {
+                            if !terrain.walkable {
+                                continue;
+                            }
+                            
+                            // 计算距离
+                            let dx = (terrain_pos.x - pos.x).abs();
+                            let dy = (terrain_pos.y - pos.y).abs();
+                            let distance = ((dx * dx + dy * dy) as f32).sqrt();
+                            
+                            // 优先选择附近20格内的目标
+                            if distance <= 20.0 {
+                                // 根据地形类型和资源丰富度评分
+                                let terrain_score = match terrain.terrain_type {
+                                    TerrainType::Tree => 3.0,      // 树木高优先级
+                                    TerrainType::Stone => 2.5,     // 石头较高优先级
+                                    TerrainType::Mountain => 2.0,  // 山脉（如果可走）
+                                    TerrainType::Grass => 1.5,     // 草地中等优先级
+                                    TerrainType::Water => 0.5,     // 水域低优先级
+                                };
+                                
+                                // 综合评分：地形分 * 资源丰富度 / (距离 + 1)
+                                let score = terrain_score * terrain.resource_richness / (distance + 1.0);
+                                
+                                candidates.push((terrain_pos.clone(), terrain.terrain_type, score));
+                            }
                         }
                     }
-
-                    if is_walkable {
-                        let task_type = rng.gen_range(0..3);
-                        let new_task = match task_type {
-                            0 => Task::Gathering(GridPosition {
-                                x: target_x,
-                                y: target_y,
-                            }),
-                            1 => Task::Mining(GridPosition {
-                                x: target_x,
-                                y: target_y,
-                            }),
-                            _ => Task::Idle,
-                        };
-
-                        work_state.current_task = Some(new_task);
-                        work_state.cached_path.clear();
-                        work_state.path_index = 0;
-                        work_state.task_cooldown = 2.0; // 2秒冷却
-                        work_state.task_duration = 0.0; // 重置任务持续时间
+                    
+                    // 如果找到候选目标，按评分排序并选择最佳目标
+                    if !candidates.is_empty() {
+                        candidates.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap());
+                        
+                        // 从前30%的候选中随机选择，增加多样性
+                        let top_count = (candidates.len() / 3).max(1);
+                        
+                        // 尝试找一个可达的目标（最多尝试5次）
+                        let mut found_reachable = false;
+                        for attempt in 0..5.min(top_count) {
+                            let chosen_idx = if attempt == 0 {
+                                rng.gen_range(0..top_count)
+                            } else {
+                                rng.gen_range(0..candidates.len())
+                            };
+                            
+                            let (target_pos, terrain_type, _) = &candidates[chosen_idx];
+                            let current_pos = (pos.x, pos.y);
+                            let target = (target_pos.x, target_pos.y);
+                            
+                            // 快速路径验证
+                            if let Some(_path) = find_path(current_pos, target, &terrain_query) {
+                                // 路径存在，分配任务
+                                let new_task = match terrain_type {
+                                    TerrainType::Tree | TerrainType::Grass => Task::Gathering(target_pos.clone()),
+                                    TerrainType::Stone | TerrainType::Mountain => Task::Mining(target_pos.clone()),
+                                    _ => Task::Gathering(target_pos.clone()),
+                                };
+                                
+                                debug_entity!("矮人找到工作目标: {:?} at {:?}", terrain_type, target);
+                                work_state.current_task = Some(new_task);
+                                work_state.cached_path.clear();
+                                work_state.path_index = 0;
+                                work_state.task_cooldown = 1.0;
+                                work_state.task_duration = 0.0;
+                                found_reachable = true;
+                                break;
+                            }
+                        }
+                        
+                        if !found_reachable {
+                            debug_entity!("矮人找不到可达的工作目标，开始闲逛");
+                            work_state.task_cooldown = 2.0;
+                        }
+                    } else {
+                        // 不寻找工作，开始闲逛
+                        debug_entity!("矮人选择闲逛而非工作");
                     }
+                    
+                    // 无论是否找到工作，都可能开始闲逛
+                    if work_state.current_task == Some(Task::Idle) {
+                        // 在附近随机选择闲逛目标（5-8格范围）
+                        let wander_distance = rng.gen_range(5..=8);
+                        let target_x = (pos.x + rng.gen_range(-wander_distance..=wander_distance))
+                            .clamp(0, WORLD_WIDTH - 1);
+                        let target_y = (pos.y + rng.gen_range(-wander_distance..=wander_distance))
+                            .clamp(0, WORLD_HEIGHT - 1);
+                        
+                        // 检查闲逛目标是否可行走
+                        for (terrain_pos, terrain) in terrain_query.iter() {
+                            if terrain_pos.x == target_x && terrain_pos.y == target_y && terrain.walkable {
+                                work_state.current_task = Some(Task::Wandering(GridPosition {
+                                    x: target_x,
+                                    y: target_y,
+                                }));
+                                work_state.cached_path.clear();
+                                work_state.path_index = 0;
+                                work_state.task_cooldown = 3.0; // 闲逛后3秒再决定下一步
+                                work_state.task_duration = 0.0;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            Some(Task::Wandering(target)) => {
+                // 闲逛：移动到目标但不工作
+                let current_pos = (pos.x, pos.y);
+                let target_pos = (target.x, target.y);
+
+                // 闲逛超时（10秒后停止）
+                if work_state.task_duration > 10.0 {
+                    velocity.x = 0.0;
+                    velocity.y = 0.0;
+                    work_state.current_task = Some(Task::Idle);
+                    work_state.cached_path.clear();
+                    work_state.path_index = 0;
+                    work_state.task_cooldown = 1.0;
+                    work_state.task_duration = 0.0;
+                    continue;
+                }
+
+                // 到达目标，停止闲逛
+                if current_pos == target_pos {
+                    velocity.x = 0.0;
+                    velocity.y = 0.0;
+                    work_state.current_task = Some(Task::Idle);
+                    work_state.cached_path.clear();
+                    work_state.path_index = 0;
+                    work_state.task_cooldown = 1.0; // 闲逛结束后快速决定下一步
+                    work_state.task_duration = 0.0;
+                    continue;
+                }
+
+                // 使用与工作相同的寻路逻辑
+                let need_recalc = work_state.cached_path.is_empty()
+                    || work_state.path_index >= work_state.cached_path.len()
+                    || work_state.path_recalc_timer > 5.0;
+
+                if need_recalc {
+                    match find_path(current_pos, target_pos, &terrain_query) {
+                        Some(path) => {
+                            let simplified = simplify_path(path);
+                            work_state.cached_path = simplified;
+                            work_state.path_index = 0;
+                            work_state.path_recalc_timer = 0.0;
+                        }
+                        None => {
+                            // 找不到路径，放弃闲逛
+                            velocity.x = 0.0;
+                            velocity.y = 0.0;
+                            work_state.current_task = Some(Task::Idle);
+                            work_state.cached_path.clear();
+                            work_state.path_index = 0;
+                            work_state.task_cooldown = 1.0;
+                            work_state.task_duration = 0.0;
+                            continue;
+                        }
+                    }
+                }
+
+                // 沿路径移动
+                if !work_state.cached_path.is_empty()
+                    && work_state.path_index < work_state.cached_path.len()
+                {
+                    let next_waypoint = work_state.cached_path[work_state.path_index];
+
+                    let dx = (current_pos.0 - next_waypoint.0).abs();
+                    let dy = (current_pos.1 - next_waypoint.1).abs();
+                    if dx == 0 && dy == 0 {
+                        work_state.path_index += 1;
+
+                        if work_state.path_index < work_state.cached_path.len() {
+                            let next = work_state.cached_path[work_state.path_index];
+                            let dx = next.0 - current_pos.0;
+                            let dy = next.1 - current_pos.1;
+                            let distance = ((dx * dx + dy * dy) as f32).sqrt();
+
+                            if distance > 0.01 {
+                                velocity.x = (dx as f32 / distance).round();
+                                velocity.y = (dy as f32 / distance).round();
+                            } else {
+                                velocity.x = 0.0;
+                                velocity.y = 0.0;
+                            }
+                        } else {
+                            work_state.cached_path.clear();
+                            work_state.path_index = 0;
+                        }
+                    } else {
+                        let dx = next_waypoint.0 - current_pos.0;
+                        let dy = next_waypoint.1 - current_pos.1;
+                        let distance = ((dx * dx + dy * dy) as f32).sqrt();
+                        if distance > 0.01 {
+                            velocity.x = (dx as f32 / distance).round();
+                            velocity.y = (dy as f32 / distance).round();
+                        } else {
+                            velocity.x = 0.0;
+                            velocity.y = 0.0;
+                        }
+                    }
+                } else {
+                    velocity.x = 0.0;
+                    velocity.y = 0.0;
                 }
             }
             Some(Task::Gathering(target)) | Some(Task::Mining(target)) => {
                 let current_pos = (pos.x, pos.y);
                 let target_pos = (target.x, target.y);
 
-                // 任务超时检测（30秒后放弃）
-                if work_state.task_duration > 30.0 {
+                // 任务超时检测（20秒后放弃）
+                if work_state.task_duration > 20.0 {
+                    debug_entity!("矮人任务超时，放弃目标 {:?}", target_pos);
                     velocity.x = 0.0;
                     velocity.y = 0.0;
                     work_state.current_task = Some(Task::Idle);
                     work_state.cached_path.clear();
                     work_state.path_index = 0;
-                    work_state.task_cooldown = 3.0; // 放弃任务后更长的冷却
+                    work_state.task_cooldown = 1.0; // 缩短冷却，快速寻找新目标
                     work_state.task_duration = 0.0;
                     continue;
                 }
@@ -106,12 +285,13 @@ pub fn dwarf_work_system(
                         }
                         None => {
                             // 找不到路径，放弃任务
+                            debug_entity!("矮人无法到达目标 {:?}，寻找新目标", target_pos);
                             velocity.x = 0.0;
                             velocity.y = 0.0;
                             work_state.current_task = Some(Task::Idle);
                             work_state.cached_path.clear();
                             work_state.path_index = 0;
-                            work_state.task_cooldown = 5.0; // 寻路失败后较长冷却
+                            work_state.task_cooldown = 0.5; // 快速寻找可达目标
                             work_state.task_duration = 0.0;
                             continue;
                         }
@@ -258,7 +438,7 @@ pub fn resource_gathering_system(
 
                         work_state.work_progress = 0.0;
                         work_state.current_task = Some(Task::Idle);
-                        work_state.task_cooldown = 2.0; // 完成任务后2秒冷却
+                        work_state.task_cooldown = 0.5; // 快速寻找下一个任务
                         work_state.task_duration = 0.0;
                     }
                 }
@@ -291,7 +471,7 @@ pub fn resource_gathering_system(
 
                         work_state.work_progress = 0.0;
                         work_state.current_task = Some(Task::Idle);
-                        work_state.task_cooldown = 2.0; // 完成任务后2秒冷却
+                        work_state.task_cooldown = 0.5; // 快速寻找下一个任务
                         work_state.task_duration = 0.0;
                     }
                 }

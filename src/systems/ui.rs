@@ -1,79 +1,72 @@
 use crate::components::*;
 use crate::resources::*;
+use crate::ui_framework::*;
 use bevy::prelude::*;
 
-/// UI设置
+/// UI设置 - 使用新的UI框架
 pub fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
-    // 加载支持中文、emoji和特殊符号的字体
+    // 加载字体和主题
     let font = asset_server.load("fonts/sarasa-gothic-sc-regular.ttf");
+    let theme = UITheme::default();
+    
+    // 初始化主题资源
+    commands.insert_resource(theme.clone());
 
-    // 创建昼夜光照覆盖层 - 全屏半透明层
+    // 创建昼夜光照覆盖层
     commands.spawn((
         Sprite {
-            color: Color::srgba(0.0, 0.0, 0.0, 0.0),      // 初始透明
-            custom_size: Some(Vec2::new(2000.0, 1200.0)), // 覆盖整个屏幕
+            color: Color::srgba(0.0, 0.0, 0.0, 0.0),
+            custom_size: Some(Vec2::new(2000.0, 1200.0)),
             ..default()
         },
-        Transform::from_xyz(0.0, 0.0, 50.0), // z=50,在地形之上,矮人之下
+        Transform::from_xyz(0.0, 0.0, 50.0),
         DaylightOverlay,
     ));
 
-    // 资源显示UI - 使用标记组件
-    commands.spawn((
-        Text::new("资源统计"),
-        TextFont {
-            font: font.clone(),
-            font_size: 20.0,
-            ..default()
-        },
-        TextColor(Color::srgb(1.0, 0.9, 0.5)),
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(15.0),
-            left: Val::Px(15.0),
-            ..default()
-        },
-        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
-        ResourceDisplay, // 标记组件
-    ));
+    let mut builder = PanelBuilder::new(commands.reborrow(), font.clone(), theme.clone());
 
-    // 游戏标题
-    commands.spawn((
-        Text::new("◆ 矮人要塞式游戏 ◆"),
-        TextFont {
-            font: font.clone(),
-            font_size: 26.0,
-            ..default()
-        },
-        TextColor(Color::srgb(1.0, 0.85, 0.3)),
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(15.0),
-            left: Val::Percent(50.0),
-            ..default()
-        },
-        BackgroundColor(Color::srgba(0.1, 0.1, 0.15, 0.85)),
-        TitleDisplay, // 标记组件
-    ));
+    // 1. 资源统计面板（左上角）
+    let resource_config = PanelConfig {
+        anchor: PanelAnchor::TopLeft,
+        offset: Vec2::new(15.0, 15.0),
+        min_width: 400.0,
+        min_height: 80.0,
+        background_color: theme.background_dark,
+        border_color: Some(theme.border_color),
+        padding: theme.padding_medium,
+    };
+    let resource_panel = builder.create_panel("resource_stats", resource_config, ResourcePanel);
+    builder.add_text(resource_panel, "资源统计...", ResourceDisplay);
 
-    // 帮助信息
-    commands.spawn((
-        Text::new("操作说明:\nWASD/方向键: 移动视角\n鼠标左键: 选择矮人\n鼠标右键: 指挥选中的矮人移动到目标位置\nM: 返回世界地图\n黄色边框 = 选中的矮人\n\n时间控制:\n空格: 暂停/继续\n1: 暂停 | 2: 半速 | 3: 正常 | 4: 2倍速 | 5: 5倍速"),
-        TextFont {
-            font: font.clone(),
-            font_size: 18.0,
-            ..default()
-        },
-        TextColor(Color::srgb(0.8, 0.9, 1.0)),
-        Node {
-            position_type: PositionType::Absolute,
-            bottom: Val::Px(15.0),
-            right: Val::Px(15.0),
-            ..default()
-        },
-        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
+    // 2. 游戏标题面板（顶部居中）
+    let title_config = PanelConfig {
+        anchor: PanelAnchor::TopCenter,
+        offset: Vec2::new(0.0, 15.0),
+        min_width: 300.0,
+        min_height: 50.0,
+        background_color: theme.background_light,
+        border_color: Some(theme.accent_color),
+        padding: theme.padding_small,
+    };
+    let title_panel = builder.create_panel("game_title", title_config, TitlePanel);
+    builder.add_title(title_panel, "◆ 矮人要塞式游戏 ◆");
+
+    // 3. 帮助信息面板（右下角）
+    let help_config = PanelConfig {
+        anchor: PanelAnchor::BottomRight,
+        offset: Vec2::new(15.0, 15.0),
+        min_width: 350.0,
+        min_height: 200.0,
+        background_color: theme.background_dark,
+        border_color: Some(theme.border_color),
+        padding: theme.padding_medium,
+    };
+    let help_panel = builder.create_panel("help_info", help_config, HelpPanel);
+    builder.add_text(
+        help_panel,
+        "操作说明:\nWASD/方向键: 移动视角\n鼠标左键: 选择矮人\n鼠标右键: 指挥矮人移动\nM: 返回世界地图\n黄色边框 = 选中的矮人\n\n时间控制:\n空格: 暂停/继续\n1: 暂停 | 2: 半速 | 3: 正常\n4: 2倍速 | 5: 5倍速\n\nF1: 切换帮助显示",
         HelpDisplay,
-    ));
+    );
 }
 
 /// UI更新系统
@@ -146,6 +139,7 @@ pub fn update_dwarf_panel(
     for mut text in panel_query.iter_mut() {
         let task_text = match &work_state.current_task {
             Some(Task::Idle) => "空闲".to_string(),
+            Some(Task::Wandering(_)) => "闲逛".to_string(),
             Some(Task::Gathering(target)) => {
                 let progress = (work_state.work_progress * 100.0) as i32;
                 format!("采集 -> ({}, {}) [{}%]", target.x, target.y, progress)
@@ -176,6 +170,7 @@ pub fn update_work_indicators(
                 // 根据任务类型和进度改变颜色和透明度
                 sprite.color = match &work_state.current_task {
                     Some(Task::Idle) => Color::srgba(0.5, 0.5, 0.5, 0.6), // 灰色 = 空闲
+                    Some(Task::Wandering(_)) => Color::srgba(0.7, 0.7, 1.0, 0.5), // 淡蓝色 = 闲逛
                     Some(Task::Gathering(_)) => {
                         // 绿色，透明度随进度变化
                         let alpha = 0.5 + work_state.work_progress * 0.5;

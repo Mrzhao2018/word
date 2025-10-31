@@ -14,6 +14,10 @@ pub use time_control::*;
 mod ui;
 pub use ui::*;
 
+// UI交互系统
+mod ui_interaction;
+pub use ui_interaction::*;
+
 // 输入和交互系统
 mod input;
 pub use input::*;

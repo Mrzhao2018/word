@@ -1,5 +1,6 @@
 use crate::components::*;
 use crate::resources::*;
+use crate::ui_framework::*;
 use bevy::prelude::*;
 
 macro_rules! despawn_entities_safe {
@@ -26,6 +27,7 @@ fn cleanup_local_entities(
     resource_display_query: &Query<Entity, With<ResourceDisplay>>,
     title_display_query: &Query<Entity, With<TitleDisplay>>,
     help_display_query: &Query<Entity, With<HelpDisplay>>,
+    ui_panel_query: &Query<Entity, With<UIPanel>>,
 ) {
     despawn_entities_safe!(commands, terrain_query);
     despawn_entities_safe!(commands, terrain_ascii_query);
@@ -39,6 +41,7 @@ fn cleanup_local_entities(
     despawn_entities_safe!(commands, resource_display_query);
     despawn_entities_safe!(commands, title_display_query);
     despawn_entities_safe!(commands, help_display_query);
+    despawn_entities_safe!(commands, ui_panel_query);
 }
 
 /// 清理局部地图中的所有实体（用于状态切换回大地图）
@@ -57,6 +60,7 @@ pub fn cleanup_local_map(
     resource_display_query: Query<Entity, With<ResourceDisplay>>,
     title_display_query: Query<Entity, With<TitleDisplay>>,
     help_display_query: Query<Entity, With<HelpDisplay>>,
+    ui_panel_query: Query<Entity, With<UIPanel>>,
 ) {
     cleanup_local_entities(
         &mut commands,
@@ -72,6 +76,7 @@ pub fn cleanup_local_map(
         &resource_display_query,
         &title_display_query,
         &help_display_query,
+        &ui_panel_query,
     );
 }
 
@@ -92,6 +97,7 @@ pub fn cleanup_game_on_menu_return(
     resource_display_query: Query<Entity, With<ResourceDisplay>>,
     title_display_query: Query<Entity, With<TitleDisplay>>,
     help_display_query: Query<Entity, With<HelpDisplay>>,
+    ui_panel_query: Query<Entity, With<UIPanel>>,
 ) {
     if !game_initialized.initialized {
         return;
@@ -113,6 +119,7 @@ pub fn cleanup_game_on_menu_return(
         &resource_display_query,
         &title_display_query,
         &help_display_query,
+        &ui_panel_query,
     );
 }
 

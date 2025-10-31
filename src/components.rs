@@ -21,7 +21,7 @@ impl Dwarf {
 }
 
 /// 位置组件(网格坐标)
-#[derive(Component, Clone, Debug)]
+#[derive(Component, Clone, Debug, PartialEq)]
 pub struct GridPosition {
     pub x: i32,
     pub y: i32,
@@ -129,12 +129,13 @@ pub struct DaylightOverlay;
 #[derive(Component)]
 pub struct GridLine;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Task {
     Mining(GridPosition),
     #[allow(dead_code)] // 保留用于未来建筑系统
     Building(GridPosition, BuildingType),
     Gathering(GridPosition),
+    Wandering(GridPosition), // 闲逛 - 随机走动但不工作
     Idle,
 }
 

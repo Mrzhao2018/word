@@ -6,6 +6,7 @@ use bevy::window::PrimaryWindow;
 
 use crate::resources::{ActiveLocalMap, GameState, WorldSeed};
 use crate::world_map_data::{AtlasSelection, WorldAtlas, WorldCell, WORLD_ATLAS_TILE_SIZE};
+use crate::{debug_world_input, debug_world_selection};
 
 /// 世界地图场景根节点
 #[derive(Component)]
@@ -226,7 +227,7 @@ pub fn world_atlas_input_system(
         .and_then(|world_pos| world_to_tile(world_pos, world_atlas.width, world_atlas.height));
 
     if selection.hovered != hovered_coord {
-        println!("[DEBUG] input_system 更新悬停: {:?} -> {:?}", selection.hovered, hovered_coord);
+        debug_world_input!("input_system 更新悬停: {:?} -> {:?}", selection.hovered, hovered_coord);
     }
     
     selection.hovered = hovered_coord;
@@ -275,8 +276,8 @@ pub fn world_atlas_selection_system(
     let state_changed = *last_state != current_state;
     
     if state_changed {
-        println!(
-            "[DEBUG] 状态变化 - 悬停: {:?}, 选中: {:?}",
+        debug_world_selection!(
+            "状态变化 - 悬停: {:?}, 选中: {:?}",
             selection.hovered, selection.selected
         );
     }
@@ -308,8 +309,8 @@ pub fn world_atlas_selection_system(
             position.z = 9.0;
             
             if state_changed {
-                println!(
-                    "[DEBUG] 更新悬停高亮 - 坐标: {:?}, 世界位置: {:?}",
+                debug_world_selection!(
+                    "更新悬停高亮 - 坐标: {:?}, 世界位置: {:?}",
                     cell.coord, position
                 );
             }
