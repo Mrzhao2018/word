@@ -63,7 +63,7 @@ fn main() {
         .add_systems(Update, (
             world_atlas_input_system,
             world_atlas_selection_system,
-        ).run_if(in_state(GameState::WorldView)))
+        ).chain().run_if(in_state(GameState::WorldView)))
         // 进入局部地图时的系统（只在首次初始化时生成）
         .add_systems(OnEnter(GameState::LocalView), (
             setup_world,

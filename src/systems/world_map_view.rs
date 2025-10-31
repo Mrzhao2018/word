@@ -225,6 +225,10 @@ pub fn world_atlas_input_system(
         })
         .and_then(|world_pos| world_to_tile(world_pos, world_atlas.width, world_atlas.height));
 
+    if selection.hovered != hovered_coord {
+        println!("[DEBUG] input_system 更新悬停: {:?} -> {:?}", selection.hovered, hovered_coord);
+    }
+    
     selection.hovered = hovered_coord;
 
     if buttons.just_pressed(MouseButton::Left) {
@@ -255,6 +259,7 @@ pub fn world_atlas_input_system(
 pub fn world_atlas_selection_system(
     world_atlas: Res<WorldAtlas>,
     selection: Res<AtlasSelection>,
+    mut last_state: Local<(Option<IVec2>, Option<IVec2>)>,
     mut highlight_query: Query<
         &mut Transform,
         (With<AtlasSelectionHighlight>, Without<AtlasHoverHighlight>),
@@ -263,8 +268,21 @@ pub fn world_atlas_selection_system(
         (&mut Transform, &mut Visibility),
         (With<AtlasHoverHighlight>, Without<AtlasSelectionHighlight>),
     >,
-    mut info_text_query: Query<&mut Text, With<AtlasInfoText>>,
+    mut info_text_query: Query<&mut Text2d, With<AtlasInfoText>>,
 ) {
+    // 强制每帧检查，即使没有变更检测
+    let current_state = (selection.selected, selection.hovered);
+    let state_changed = *last_state != current_state;
+    
+    if state_changed {
+        println!(
+            "[DEBUG] 状态变化 - 悬停: {:?}, 选中: {:?}",
+            selection.hovered, selection.selected
+        );
+    }
+    
+    *last_state = current_state;
+
     let selected_cell = selection
         .selected
         .and_then(|coord| world_atlas.cell_at(coord));
@@ -272,6 +290,7 @@ pub fn world_atlas_selection_system(
         .hovered
         .and_then(|coord| world_atlas.cell_at(coord));
 
+    // 每帧强制更新选中高亮位置
     if let Ok(mut transform) = highlight_query.single_mut() {
         if let Some(cell) = selected_cell {
             let mut position = tile_to_world(cell.coord, world_atlas.width, world_atlas.height);
@@ -282,10 +301,19 @@ pub fn world_atlas_selection_system(
         }
     }
 
+    // 每帧强制更新悬停高亮位置
     if let Ok((mut transform, mut visibility)) = hover_highlight_query.single_mut() {
         if let Some(cell) = hovered_cell {
             let mut position = tile_to_world(cell.coord, world_atlas.width, world_atlas.height);
             position.z = 9.0;
+            
+            if state_changed {
+                println!(
+                    "[DEBUG] 更新悬停高亮 - 坐标: {:?}, 世界位置: {:?}",
+                    cell.coord, position
+                );
+            }
+            
             transform.translation = position;
             *visibility = Visibility::Visible;
         } else {
@@ -293,8 +321,9 @@ pub fn world_atlas_selection_system(
         }
     }
 
+    // 每帧强制更新信息文本
     if let Ok(mut text) = info_text_query.single_mut() {
-        text.0 = build_tile_info(hovered_cell, selected_cell);
+        **text = build_tile_info(hovered_cell, selected_cell);
     }
 }
 
