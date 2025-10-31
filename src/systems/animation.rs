@@ -11,9 +11,9 @@ pub fn water_animation_system(
     for (mut transform, mut water, mut color) in query.iter_mut() {
         water.phase += time.delta_secs() * 2.0;
 
-        // 上下波动
-        let wave = (water.phase.sin() * 2.0).round();
-        transform.translation.y += wave * 0.1;
+        // 上下波动 - 使用基准位置
+        let wave = water.phase.sin() * 0.8;
+        transform.translation.y = water.base_y + wave;
 
         // 颜色闪烁(模拟波光)
         let brightness = 0.5 + water.phase.sin() * 0.3;
@@ -26,9 +26,9 @@ pub fn tree_sway_system(time: Res<Time>, mut query: Query<(&mut Transform, &mut 
     for (mut transform, mut sway) in query.iter_mut() {
         sway.offset += time.delta_secs() * 1.5;
 
-        // 轻微的左右摇摆
-        let sway_amount = (sway.offset.sin() * 1.5).round();
-        transform.translation.x += sway_amount * 0.1;
+        // 轻微的左右摇摆 - 使用基准位置
+        let sway_amount = sway.offset.sin() * 0.6;
+        transform.translation.x = sway.base_x + sway_amount;
     }
 }
 

@@ -106,12 +106,14 @@ pub struct AsciiChar {
 #[derive(Component)]
 pub struct WaterAnimation {
     pub phase: f32,
+    pub base_y: f32,  // 记录初始Y位置
 }
 
 /// 树木摇摆动画
 #[derive(Component)]
 pub struct TreeSway {
     pub offset: f32,
+    pub base_x: f32,  // 记录初始X位置
 }
 
 /// 粒子效果

@@ -1,5 +1,5 @@
 use crate::components::*;
-use crate::resources::{ActiveLocalMap, WorldSeed};
+use crate::resources::{ActiveLocalMap, WorldSeed, GeneratedMapsRegistry, StoredMapTile, StoredDwarf};
 use crate::world_map_data::{WorldAtlas, WorldBiome, WorldCell};
 use bevy::prelude::*;
 use noise::{NoiseFn, Perlin};
@@ -256,21 +256,113 @@ impl TerrainGenerator {
     }
 }
 
-/// 生成世界地形 - 改进版，使用噪声生成
+/// 从存储中恢复地图
+fn restore_map_from_storage(
+    commands: &mut Commands,
+    font: &Handle<Font>,
+    stored_map: &Vec<StoredMapTile>,
+    _coord: IVec2,
+) {
+    for tile in stored_map.iter() {
+        let x = tile.x;
+        let y = tile.y;
+        let pos_x = x as f32 * TILE_SIZE - (WORLD_WIDTH as f32 * TILE_SIZE / 2.0) + (TILE_SIZE / 2.0);
+        let pos_y = y as f32 * TILE_SIZE - (WORLD_HEIGHT as f32 * TILE_SIZE / 2.0) + (TILE_SIZE / 2.0);
+        
+        // 恢复地形方块
+        commands.spawn((
+            Sprite {
+                color: tile.color,
+                custom_size: Some(Vec2::new(TILE_SIZE - 1.0, TILE_SIZE - 1.0)),
+                ..default()
+            },
+            Transform::from_xyz(pos_x, pos_y, 0.0),
+            Terrain {
+                terrain_type: tile.terrain_type,
+                walkable: tile.walkable,
+                resource_richness: tile.resource_richness,
+            },
+            GridPosition { x, y },
+        ));
+        
+        // 恢复ASCII字符层
+        let mut entity = commands.spawn((
+            Text2d::new(tile.ascii_char.to_string()),
+            TextFont {
+                font: font.clone(),
+                font_size: 20.0,
+                ..default()
+            },
+            TextColor(tile.char_color),
+            Transform::from_xyz(pos_x, pos_y, 0.05),
+            AsciiChar {
+                character: tile.ascii_char,
+            },
+            GridPosition { x, y },
+        ));
+        
+        // 恢复动画组件
+        if tile.has_water_animation {
+            entity.insert(WaterAnimation {
+                phase: tile.water_phase,
+                base_y: pos_y,  // 使用当前位置作为基准
+            });
+        }
+        if tile.has_tree_sway {
+            entity.insert(TreeSway {
+                offset: tile.tree_offset,
+                base_x: pos_x,  // 使用当前位置作为基准
+            });
+        }
+        
+        // 恢复网格线
+        commands.spawn((
+            Sprite {
+                color: Color::srgba(0.0, 0.0, 0.0, 0.08),
+                custom_size: Some(Vec2::new(TILE_SIZE, TILE_SIZE)),
+                ..default()
+            },
+            Transform::from_xyz(pos_x, pos_y, 0.1),
+            GridLine,
+        ));
+    }
+}
+
+/// 生成世界地形 - 改进版，使用噪声生成并支持地图持久化
 pub fn setup_world(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     world_seed: Res<WorldSeed>,
     active_local: Res<ActiveLocalMap>,
     world_atlas: Res<WorldAtlas>,
+    mut map_registry: ResMut<GeneratedMapsRegistry>,
 ) {
-    let mut rng = SmallRng::seed_from_u64(world_seed.seed as u64);
     let font = asset_server.load("fonts/sarasa-gothic-sc-regular.ttf");
-
-    let selected_cell = active_local
-        .coord
-        .and_then(|coord| world_atlas.cell_at(coord))
-        .cloned();
+    
+    // 获取当前地块坐标
+    let current_coord = match active_local.coord {
+        Some(coord) => coord,
+        None => {
+            warn!("尝试生成地图但没有选中地块！");
+            return;
+        }
+    };
+    
+    // 检查该地块是否已经生成过
+    if let Some(stored_map) = map_registry.maps.get(&current_coord) {
+        // 地图已存在，从存储中恢复
+        info!("恢复已生成的地图: {:?}", current_coord);
+        restore_map_from_storage(&mut commands, &font, stored_map, current_coord);
+        return;
+    }
+    
+    // 地图不存在，生成新地图
+    info!("生成新地图: {:?}", current_coord);
+    
+    let mut rng = SmallRng::seed_from_u64(world_seed.seed as u64 + 
+        (current_coord.x as u64 * 1000 + current_coord.y as u64)); // 每个地块有不同的种子偏移
+    
+    let selected_cell = world_atlas.cell_at(current_coord).cloned();
 
     // 创建地形生成器（使用资源中的种子及选中世界格子上下文）
     let generator = TerrainGenerator::new(world_seed.seed, selected_cell.as_ref());
@@ -285,6 +377,9 @@ pub fn setup_world(
         Some(WorldBiome::Tundra) => 0.9,
         _ => 1.0,
     };
+    
+    // 用于存储生成的地图数据（一维数组）
+    let mut stored_tiles = Vec::with_capacity((WORLD_WIDTH * WORLD_HEIGHT) as usize);
 
     for x in 0..WORLD_WIDTH {
         for y in 0..WORLD_HEIGHT {
@@ -338,13 +433,15 @@ pub fn setup_world(
             // 主地形方块(背景) - 添加渐变效果
             let gradient_offset = rng.gen_range(-0.02..0.02);
             let color_srgba = color.to_srgba();
+            let final_color = Color::srgb(
+                (color_srgba.red + gradient_offset).clamp(0.0, 1.0),
+                (color_srgba.green + gradient_offset).clamp(0.0, 1.0),
+                (color_srgba.blue + gradient_offset).clamp(0.0, 1.0),
+            );
+            
             commands.spawn((
                 Sprite {
-                    color: Color::srgb(
-                        (color_srgba.red + gradient_offset).clamp(0.0, 1.0),
-                        (color_srgba.green + gradient_offset).clamp(0.0, 1.0),
-                        (color_srgba.blue + gradient_offset).clamp(0.0, 1.0),
-                    ),
+                    color: final_color,
                     custom_size: Some(Vec2::new(TILE_SIZE - 1.0, TILE_SIZE - 1.0)),
                     ..default()
                 },
@@ -356,6 +453,12 @@ pub fn setup_world(
                 },
                 GridPosition { x, y },
             ));
+
+            // 生成动画数据
+            let water_phase = rng.gen_range(0.0..6.28);
+            let tree_offset = rng.gen_range(0.0..6.28);
+            let has_water_animation = matches!(terrain_type, TerrainType::Water);
+            let has_tree_sway = matches!(terrain_type, TerrainType::Tree);
 
             // ASCII字符层
             let mut entity = commands.spawn((
@@ -374,18 +477,17 @@ pub fn setup_world(
             ));
 
             // 为水和树添加动画组件
-            match terrain_type {
-                TerrainType::Water => {
-                    entity.insert(WaterAnimation {
-                        phase: rng.gen_range(0.0..6.28),
-                    });
-                }
-                TerrainType::Tree => {
-                    entity.insert(TreeSway {
-                        offset: rng.gen_range(0.0..6.28),
-                    });
-                }
-                _ => {}
+            if has_water_animation {
+                entity.insert(WaterAnimation {
+                    phase: water_phase,
+                    base_y: pos_y,  // 记录初始位置
+                });
+            }
+            if has_tree_sway {
+                entity.insert(TreeSway {
+                    offset: tree_offset,
+                    base_x: pos_x,  // 记录初始位置
+                });
             }
 
             // 添加网格线效果（更细腻）
@@ -398,16 +500,177 @@ pub fn setup_world(
                 Transform::from_xyz(pos_x, pos_y, 0.1),
                 GridLine,
             ));
+            
+            // 存储地块数据
+            stored_tiles.push(StoredMapTile {
+                x,
+                y,
+                terrain_type,
+                walkable,
+                resource_richness,
+                color: final_color,
+                ascii_char,
+                char_color,
+                has_water_animation,
+                has_tree_sway,
+                water_phase,
+                tree_offset,
+            });
         }
+    }
+    
+    // 将生成的地图存储到注册表
+    map_registry.maps.insert(current_coord, stored_tiles);
+    
+    // 如果这是第一个生成的地图，设置为出生点
+    if map_registry.spawn_location.is_none() {
+        map_registry.spawn_location = Some(current_coord);
+        info!("设置出生点: {:?}", current_coord);
     }
 }
 
-/// 生成矮人 - 改进版，直接查询已生成的地形实体
+/// 恢复保存的矮人
+fn restore_dwarf(commands: &mut Commands, font: &Handle<Font>, stored: &StoredDwarf) {
+    let pos_x = stored.grid_x as f32 * TILE_SIZE - (WORLD_WIDTH as f32 * TILE_SIZE / 2.0) + (TILE_SIZE / 2.0);
+    let pos_y = stored.grid_y as f32 * TILE_SIZE - (WORLD_HEIGHT as f32 * TILE_SIZE / 2.0) + (TILE_SIZE / 2.0);
+    
+    // 生成完整的矮人实体（包含所有必要的组件和子实体）
+    commands
+        .spawn((
+            Sprite {
+                color: Color::srgb(0.85, 0.65, 0.45),
+                custom_size: Some(Vec2::new(TILE_SIZE * 0.8, TILE_SIZE * 0.8)),
+                ..default()
+            },
+            Transform::from_xyz(pos_x, pos_y, 2.0),
+            Dwarf {
+                name: stored.name.clone(),
+                health: stored.health,
+                hunger: stored.hunger,
+                happiness: stored.happiness,
+            },
+            GridPosition {
+                x: stored.grid_x,
+                y: stored.grid_y,
+            },
+            Velocity { x: 0.0, y: 0.0 },  // 添加Velocity组件，这是AI系统需要的
+            WorkState {
+                current_task: stored.current_task.clone(),
+                work_progress: stored.work_progress,
+                cached_path: Vec::new(),
+                path_index: 0,
+                path_recalc_timer: 0.0,
+                task_cooldown: 0.0,
+                task_duration: 0.0,
+            },
+        ))
+        .with_children(|parent| {
+            // 阴影
+            parent.spawn((
+                Sprite {
+                    color: Color::srgba(0.0, 0.0, 0.0, 0.3),
+                    custom_size: Some(Vec2::new(TILE_SIZE * 0.9, TILE_SIZE * 0.3)),
+                    ..default()
+                },
+                Transform::from_xyz(1.0, -2.0, -0.5),
+            ));
+
+            // 边框
+            parent.spawn((
+                Sprite {
+                    color: Color::srgb(0.4, 0.3, 0.2),
+                    custom_size: Some(Vec2::new(TILE_SIZE * 0.85, TILE_SIZE * 0.85)),
+                    ..default()
+                },
+                Transform::from_xyz(0.0, 0.0, -0.1),
+            ));
+
+            // ASCII矮人字符
+            parent.spawn((
+                Text2d::new("@"),
+                TextFont {
+                    font: font.clone(),
+                    font_size: 28.0,
+                    ..default()
+                },
+                TextColor(Color::srgb(0.3, 0.2, 0.1)),
+                Transform::from_xyz(0.0, 0.0, 0.05),
+                AsciiChar { character: '@' },
+            ));
+
+            // 工作状态指示器
+            parent.spawn((
+                Sprite {
+                    color: Color::srgba(1.0, 1.0, 0.0, 0.6),
+                    custom_size: Some(Vec2::new(6.0, 6.0)),
+                    ..default()
+                },
+                Transform::from_xyz(0.0, 15.0, 0.2),
+                WorkIndicator,
+            ));
+
+            // 选择指示器
+            parent.spawn((
+                Text2d::new("[  ]"),
+                TextFont {
+                    font: font.clone(),
+                    font_size: 28.0,
+                    ..default()
+                },
+                TextColor(Color::srgba(1.0, 1.0, 0.0, 0.0)),
+                Transform::from_xyz(0.0, 0.0, -0.15),
+                SelectionIndicator,
+            ));
+        });
+}
+
+/// 生成矮人 - 改进版，只在出生点生成矮人，支持恢复已保存的矮人
 pub fn spawn_dwarves(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     terrain_query: Query<(&GridPosition, &Terrain)>,
+    mut map_registry: ResMut<GeneratedMapsRegistry>,
+    active_local: Res<ActiveLocalMap>,
 ) {
+    // 获取当前地块坐标
+    let current_coord = match active_local.coord {
+        Some(coord) => coord,
+        None => return,
+    };
+    
+    // 检查是否有保存的矮人数据
+    if let Some(stored_dwarves) = map_registry.dwarves.get(&current_coord) {
+        // 恢复保存的矮人
+        info!("恢复 {} 个矮人到地块 {:?}", stored_dwarves.len(), current_coord);
+        let font = asset_server.load("fonts/sarasa-gothic-sc-regular.ttf");
+        
+        for stored in stored_dwarves.clone() {
+            restore_dwarf(&mut commands, &font, &stored);
+        }
+        return;
+    }
+    
+    // 检查矮人是否已经生成过
+    if map_registry.dwarves_spawned {
+        return;
+    }
+    
+    let spawn_coord = match map_registry.spawn_location {
+        Some(coord) => coord,
+        None => return,
+    };
+    
+    // 只在出生点生成矮人
+    if current_coord != spawn_coord {
+        info!("当前地块 {:?} 不是出生点 {:?}，不生成矮人", current_coord, spawn_coord);
+        return;
+    }
+    
+    info!("在出生点 {:?} 生成矮人", spawn_coord);
+    
+    // 标记矮人已生成
+    map_registry.dwarves_spawned = true;
+    
     let dwarf_names = vec!["乌里克", "索林", "巴林", "朵莉", "芬恩", "格洛因", "诺力"];
     let font = asset_server.load("fonts/sarasa-gothic-sc-regular.ttf");
 

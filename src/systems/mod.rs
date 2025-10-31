@@ -37,3 +37,7 @@ pub use cleanup::*;
 // 世界地图系统
 mod world_map_view;
 pub use world_map_view::*;
+
+// 全局模拟系统
+mod global_simulation;
+pub use global_simulation::*;

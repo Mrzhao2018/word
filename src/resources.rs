@@ -121,3 +121,49 @@ impl Default for WorldSeed {
 pub struct ActiveLocalMap {
     pub coord: Option<IVec2>,
 }
+
+/// 存储的地图块数据
+#[derive(Clone)]
+pub struct StoredMapTile {
+    pub x: i32,
+    pub y: i32,
+    pub terrain_type: crate::components::TerrainType,
+    pub walkable: bool,
+    pub resource_richness: f32,
+    pub color: bevy::color::Color,
+    pub ascii_char: char,
+    pub char_color: bevy::color::Color,
+    pub has_water_animation: bool,
+    pub has_tree_sway: bool,
+    pub water_phase: f32,
+    pub tree_offset: f32,
+}
+
+/// 存储的矮人数据
+#[derive(Clone)]
+pub struct StoredDwarf {
+    pub name: String,
+    pub grid_x: i32,
+    pub grid_y: i32,
+    pub health: f32,
+    pub hunger: f32,
+    pub happiness: f32,
+    pub current_task: Option<crate::components::Task>,
+    pub work_progress: f32,
+    /// 上次更新时的游戏时间（用于全局模拟）
+    pub last_update_day: u32,
+    pub last_update_hour: u32,
+}
+
+/// 已生成的局部地图注册表（世界线持久化）
+#[derive(Resource, Default)]
+pub struct GeneratedMapsRegistry {
+    /// 存储每个地块的地图数据 - key: 世界坐标(x,y), value: 一维数组，使用x和y索引
+    pub maps: std::collections::HashMap<IVec2, Vec<StoredMapTile>>,
+    /// 存储每个地块的矮人数据 - key: 世界坐标(x,y)
+    pub dwarves: std::collections::HashMap<IVec2, Vec<StoredDwarf>>,
+    /// 初始出生地块（矮人只在这里生成）
+    pub spawn_location: Option<IVec2>,
+    /// 矮人是否已经生成（防止重复生成）
+    pub dwarves_spawned: bool,
+}

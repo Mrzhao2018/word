@@ -43,11 +43,11 @@ fn main() {
         .init_resource::<GlobalInventory>()
         .init_resource::<GameInitialized>()
     .init_resource::<WorldSeed>()  // 世界生成种子
-    .init_resource::<WorldAtlas>()
     .init_resource::<AtlasSelection>()
         .init_resource::<ActiveLocalMap>()
+        .init_resource::<GeneratedMapsRegistry>()  // 已生成地图注册表
         // 启动系统（总是执行）
-        .add_systems(Startup, setup_camera)
+        .add_systems(Startup, (setup_camera, init_world_atlas))
         // 进入主菜单时的系统
         .add_systems(OnEnter(GameState::MainMenu), setup_main_menu)
         // 退出主菜单时的系统
@@ -56,8 +56,12 @@ fn main() {
         .add_systems(Update, menu_button_system.run_if(in_state(GameState::MainMenu)))
         // 世界视图相关系统
         .add_systems(OnEnter(GameState::WorldView), (
+            save_dwarves_state,
+            simulate_all_offscreen_dwarves, // 模拟所有地块的后台工作
             cleanup_local_map,
             reset_game_initialized,
+        ))
+        .add_systems(OnEnter(GameState::WorldView), (
             prepare_world_atlas,
             setup_world_atlas_scene,
         ).chain())
@@ -71,11 +75,17 @@ fn main() {
             setup_world,
             spawn_dwarves,
             setup_ui,
+            mark_game_initialized,  // 放在链的最后，确保在地图生成后才标记
         ).chain().run_if(game_not_initialized))
-        // 标记局部地图已初始化
-        .add_systems(OnEnter(GameState::LocalView), mark_game_initialized)
+        // 进入局部地图时的模拟系统（只在重新进入已有地图时运行）
+        .add_systems(OnEnter(GameState::LocalView), 
+            simulate_offscreen_dwarves.run_if(game_initialized)
+        )
         // 进入主菜单时的系统（从游戏返回主菜单时清理）
-        .add_systems(OnEnter(GameState::MainMenu), cleanup_game_on_menu_return)
+        .add_systems(OnEnter(GameState::MainMenu), (
+            cleanup_game_on_menu_return,
+            cleanup_world_data,
+        ))
         // 进入暂停菜单时的系统
         .add_systems(OnEnter(GameState::Paused), setup_pause_menu)
         // 退出暂停菜单时的系统

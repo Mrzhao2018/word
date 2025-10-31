@@ -100,6 +100,11 @@ pub fn game_not_initialized(game_initialized: Res<GameInitialized>) -> bool {
     !game_initialized.initialized
 }
 
+/// 检查游戏是否已初始化（用于条件系统）
+pub fn game_initialized(game_initialized: Res<GameInitialized>) -> bool {
+    game_initialized.initialized
+}
+
 /// 标记游戏已初始化
 pub fn mark_game_initialized(mut game_initialized: ResMut<GameInitialized>) {
     game_initialized.initialized = true;

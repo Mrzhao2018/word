@@ -1,6 +1,7 @@
 use crate::components::*;
 use crate::resources::*;
 use crate::ui_framework::*;
+use crate::world_map_data::*;
 use bevy::prelude::*;
 
 macro_rules! despawn_entities_safe {
@@ -42,6 +43,37 @@ fn cleanup_local_entities(
     despawn_entities_safe!(commands, title_display_query);
     despawn_entities_safe!(commands, help_display_query);
     despawn_entities_safe!(commands, ui_panel_query);
+}
+
+/// 保存矮人状态
+pub fn save_dwarves_state(
+    dwarf_data_query: Query<(&Dwarf, &GridPosition, &WorkState)>,
+    mut map_registry: ResMut<GeneratedMapsRegistry>,
+    active_local: Res<ActiveLocalMap>,
+    game_time: Res<GameTime>,
+) {
+    if let Some(coord) = active_local.coord {
+        let mut stored_dwarves = Vec::new();
+        for (dwarf, pos, work) in dwarf_data_query.iter() {
+            stored_dwarves.push(StoredDwarf {
+                name: dwarf.name.clone(),
+                grid_x: pos.x,
+                grid_y: pos.y,
+                health: dwarf.health,
+                hunger: dwarf.hunger,
+                happiness: dwarf.happiness,
+                current_task: work.current_task.clone(),
+                work_progress: work.work_progress,
+                last_update_day: game_time.day,
+                last_update_hour: game_time.hour,
+            });
+        }
+        if !stored_dwarves.is_empty() {
+            map_registry.dwarves.insert(coord, stored_dwarves);
+            info!("保存了 {} 个矮人的状态到地块 {:?} (Day {}, Hour {})", 
+                map_registry.dwarves.get(&coord).unwrap().len(), coord, game_time.day, game_time.hour);
+        }
+    }
 }
 
 /// 清理局部地图中的所有实体（用于状态切换回大地图）
@@ -121,6 +153,58 @@ pub fn cleanup_game_on_menu_return(
         &help_display_query,
         &ui_panel_query,
     );
+}
+
+/// 清理世界线数据（在返回主菜单时）
+pub fn cleanup_world_data(
+    mut commands: Commands,
+    mut map_registry: ResMut<GeneratedMapsRegistry>,
+    mut world_seed: ResMut<WorldSeed>,
+    mut game_time: ResMut<GameTime>,
+    mut inventory: ResMut<GlobalInventory>,
+    world_atlas: Option<ResMut<WorldAtlas>>,
+) {
+    // 清理地图数据
+    map_registry.maps.clear();
+    map_registry.dwarves.clear();
+    map_registry.spawn_location = None;
+    map_registry.dwarves_spawned = false;
+    
+    // 重新生成世界种子
+    world_seed.seed = rand::random();
+    
+    // 重新生成世界地图
+    if let Some(mut atlas) = world_atlas {
+        *atlas = WorldAtlas::generate(
+            world_seed.seed as u64,
+            WORLD_ATLAS_DEFAULT_WIDTH,
+            WORLD_ATLAS_DEFAULT_HEIGHT,
+        );
+        info!("重新生成世界地图，种子: {}", world_seed.seed);
+    } else {
+        // 如果 WorldAtlas 还不存在，创建它
+        let atlas = WorldAtlas::generate(
+            world_seed.seed as u64,
+            WORLD_ATLAS_DEFAULT_WIDTH,
+            WORLD_ATLAS_DEFAULT_HEIGHT,
+        );
+        commands.insert_resource(atlas);
+        info!("首次创建世界地图，种子: {}", world_seed.seed);
+    }
+    
+    // 重置游戏时间
+    game_time.day = 0;
+    game_time.hour = 6;
+    game_time.elapsed = 0.0;
+    game_time.time_scale = 1.0;
+    
+    // 重置资源
+    inventory.stone = 50;
+    inventory.wood = 30;
+    inventory.food = 100;
+    inventory.metal = 10;
+    
+    info!("清理世界线数据，准备新游戏（时间和资源已重置）");
 }
 
 /// 将游戏初始化标记重置为未初始化

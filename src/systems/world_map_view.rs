@@ -5,8 +5,22 @@ use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
 use crate::resources::{ActiveLocalMap, GameState, WorldSeed};
-use crate::world_map_data::{AtlasSelection, WorldAtlas, WorldCell, WORLD_ATLAS_TILE_SIZE};
+use crate::world_map_data::{AtlasSelection, WorldAtlas, WorldCell, WORLD_ATLAS_TILE_SIZE, WORLD_ATLAS_DEFAULT_WIDTH, WORLD_ATLAS_DEFAULT_HEIGHT};
 use crate::{debug_world_input, debug_world_selection};
+
+/// 初始化世界地图（使用世界种子）
+pub fn init_world_atlas(
+    mut commands: Commands,
+    world_seed: Res<WorldSeed>,
+) {
+    let atlas = WorldAtlas::generate(
+        world_seed.seed as u64,
+        WORLD_ATLAS_DEFAULT_WIDTH,
+        WORLD_ATLAS_DEFAULT_HEIGHT,
+    );
+    commands.insert_resource(atlas);
+    info!("初始化世界地图，种子: {}", world_seed.seed);
+}
 
 /// 世界地图场景根节点
 #[derive(Component)]
